@@ -5,6 +5,7 @@ This deployment runs on one Ubuntu host:
 - Ollama runs on the host OS
 - `nginx` runs in Docker as the HTTPS reverse proxy
 - `aidefense-proxy` runs in Docker as a FastAPI sidecar
+- `mcp-xdr` runs in Docker as an internal FastMCP sidecar for Cisco XDR incident access
 - Open WebUI runs in Docker and talks to the proxy instead of talking to Ollama directly
 
 Traffic path:
@@ -14,6 +15,12 @@ Browser -> nginx -> Open WebUI -> aidefense-proxy -> Cisco AI Defense inspect ->
 Browser <- nginx <- Open WebUI <- aidefense-proxy <- Cisco AI Defense inspect <- Ollama
 ```
 
+Optional internal MCP path:
+
+```text
+Open WebUI -> mcp-xdr -> Cisco XDR Conure API
+```
+
 ## Folder structure
 
 ```text
@@ -21,6 +28,14 @@ open-webui/
 ├── .env
 ├── docker-compose.yml
 ├── README.md
+├── ../mcp-xdr/
+│   ├── Dockerfile
+│   ├── client.py
+│   ├── formatters.py
+│   ├── models.py
+│   ├── requirements.txt
+│   ├── server.py
+│   └── tests/
 ├── nginx/
 │   ├── certs/
 │   └── default.conf.template
@@ -47,6 +62,11 @@ open-webui/
   - internal-only on Docker port `8001`
   - adds Cisco AI Defense inspection before and after Ollama calls
   - skips Cisco inspection when Open WebUI sends `X-OpenWebUI-Task` for internal helper tasks
+- `mcp-xdr`
+  - built locally from `../mcp-xdr`
+  - internal-only on Docker port `8002`
+  - exposes Cisco XDR Conure incident tools over FastMCP Streamable HTTP
+  - uses OAuth2 client credentials and in-memory token caching only
 
 ## Environment variables
 
@@ -63,6 +83,15 @@ NGINX_HTTPS_PORT=443
 OPEN_WEBUI_CONTAINER_PORT=8080
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 AIDEFENSE_PROXY_PORT=8001
+MCP_XDR_PORT=8002
+MCP_XDR_PATH=/mcp/
+XDR_TOKEN_URL=https://visibility.amp.cisco.com/iroh/oauth2/token
+XDR_CONURE_BASE_URL=https://conure.us.security.cisco.com
+XDR_CLIENT_ID=
+XDR_CLIENT_SECRET=
+XDR_HTTP_TIMEOUT=30
+XDR_VERIFY_TLS=true
+XDR_TOKEN_REFRESH_SKEW_SECONDS=60
 AIDEFENSE_BASE_URL=https://us.api.inspect.aidefense.security.cisco.com
 AIDEFENSE_API_KEY=replace-on-host-only
 AIDEFENSE_ENFORCEMENT_MODE=monitor
@@ -84,6 +113,9 @@ Notes:
 
 - `OLLAMA_BASE_URL` is used by the proxy to reach host Ollama.
 - Open WebUI itself is wired in Compose to `http://aidefense-proxy:8001`.
+- `mcp-xdr` is exposed only on the internal Docker network at `http://mcp-xdr:8002/mcp/`.
+- `XDR_CLIENT_ID` and `XDR_CLIENT_SECRET` are read only by `mcp-xdr`.
+- The XDR sidecar uses OAuth2 client credentials and keeps access tokens only in memory.
 - Keep the real `AIDEFENSE_API_KEY` only on the host copy of `.env`.
 - The Cisco API key is injected into `aidefense-proxy` only, not into `open-webui`.
 - `AIDEFENSE_ENFORCEMENT_MODE=monitor` means the proxy inspects but never blocks.
@@ -115,7 +147,7 @@ openssl req -x509 -nodes -newkey rsa:2048 \
   -days 365 \
   -subj "/CN=<PUBLIC_HOST>" \
   -addext "subjectAltName=DNS:<PUBLIC_HOST>,IP:<PUBLIC_IP_IF_USING_IP>"
-docker compose build aidefense-proxy open-webui
+docker compose build aidefense-proxy mcp-xdr open-webui
 docker compose up -d
 docker compose ps
 ```
@@ -125,8 +157,9 @@ Useful commands:
 ```bash
 docker compose logs -f nginx
 docker compose logs -f aidefense-proxy
+docker compose logs -f mcp-xdr
 docker compose logs -f open-webui
-docker compose restart nginx aidefense-proxy open-webui
+docker compose restart nginx aidefense-proxy mcp-xdr open-webui
 docker compose down
 docker compose up -d
 ```
@@ -207,6 +240,32 @@ Expected:
 - Open WebUI responds from the SCIM endpoint
 - Duo can use this same base URL for provisioning
 
+### 7. Cisco XDR MCP sidecar
+
+```bash
+docker compose exec mcp-xdr python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8002/healthz').read().decode())"
+docker compose logs --tail=200 mcp-xdr
+```
+
+Expected:
+
+- the MCP sidecar responds with `{"status":"ok"}`
+- no OAuth token or bearer token appears in logs
+
+To register it in Open WebUI, add an MCP server using the internal URL:
+
+```text
+http://mcp-xdr:8002/mcp/
+```
+
+The initial tool set is:
+
+- `xdr_list_incidents`
+- `xdr_get_incident`
+- `xdr_get_incident_summary`
+- `xdr_get_incident_detections`
+- `xdr_get_incident_context`
+
 ## Troubleshooting
 
 ### Open WebUI loads but models do not appear
@@ -249,6 +308,22 @@ Common causes:
 - missing `OPENID_PROVIDER_URL`
 - missing `OAUTH_CLIENT_ID` or `OAUTH_CLIENT_SECRET`
 - `WEBUI_URL` and `OPENID_REDIRECT_URI` do not exactly match the Duo app redirect URI
+
+### Cisco XDR MCP tools fail
+
+Check:
+
+```bash
+docker compose logs --tail=200 mcp-xdr
+```
+
+Common causes:
+
+- `XDR_CLIENT_ID` or `XDR_CLIENT_SECRET` is missing or invalid
+- the OAuth client lacks Conure read scope and Cisco returns `403`
+- `XDR_TOKEN_URL` or `XDR_CONURE_BASE_URL` is wrong
+- the incident ID does not exist and Cisco returns `404`
+- upstream rate limiting or a temporary Conure outage
 
 ### SCIM provisioning fails
 

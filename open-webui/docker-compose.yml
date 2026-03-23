@@ -19,6 +19,28 @@ services:
       retries: 5
       start_period: 10s
 
+  mcp-xdr:
+    build:
+      context: ../mcp-xdr
+    container_name: mcp-xdr
+    restart: unless-stopped
+    environment:
+      XDR_CLIENT_ID: ${XDR_CLIENT_ID}
+      XDR_CLIENT_SECRET: ${XDR_CLIENT_SECRET}
+      XDR_TOKEN_URL: ${XDR_TOKEN_URL}
+      XDR_CONURE_BASE_URL: ${XDR_CONURE_BASE_URL}
+      XDR_HTTP_TIMEOUT: ${XDR_HTTP_TIMEOUT}
+      XDR_VERIFY_TLS: ${XDR_VERIFY_TLS}
+      XDR_TOKEN_REFRESH_SKEW_SECONDS: ${XDR_TOKEN_REFRESH_SKEW_SECONDS}
+      MCP_XDR_PORT: ${MCP_XDR_PORT}
+      MCP_XDR_PATH: ${MCP_XDR_PATH}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   open-webui:
     build:
       context: ./open-webui-custom
