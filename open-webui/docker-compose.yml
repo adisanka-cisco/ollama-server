@@ -1,0 +1,44 @@
+services:
+  aidefense-proxy:
+    build:
+      context: ./aidefense-proxy
+    container_name: aidefense-proxy
+    restart: unless-stopped
+    environment:
+      AIDEFENSE_PROXY_PORT: ${AIDEFENSE_PROXY_PORT}
+      AIDEFENSE_BASE_URL: ${AIDEFENSE_BASE_URL}
+      AIDEFENSE_API_KEY: ${AIDEFENSE_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  open-webui:
+    build:
+      context: ./open-webui-custom
+      args:
+        OPEN_WEBUI_BASE_IMAGE: ${OPEN_WEBUI_IMAGE}
+    image: open-webui-custom:local
+    container_name: ${OPEN_WEBUI_CONTAINER_NAME}
+    restart: unless-stopped
+    depends_on:
+      aidefense-proxy:
+        condition: service_healthy
+    ports:
+      - "${OPEN_WEBUI_HOST_PORT}:${OPEN_WEBUI_CONTAINER_PORT}"
+    environment:
+      # Open WebUI points to the local AI Defense proxy, not directly to Ollama.
+      # The proxy performs Cisco inspection on prompts and model responses
+      # before forwarding approved traffic to the host Ollama service.
+      OLLAMA_BASE_URL: http://aidefense-proxy:${AIDEFENSE_PROXY_PORT}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+    volumes:
+      - open-webui-data:/app/backend/data
+
+volumes:
+  open-webui-data:
