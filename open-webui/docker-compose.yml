@@ -29,16 +29,43 @@ services:
     depends_on:
       aidefense-proxy:
         condition: service_healthy
-    ports:
-      - "${OPEN_WEBUI_HOST_PORT}:${OPEN_WEBUI_CONTAINER_PORT}"
     environment:
       # Open WebUI points to the local AI Defense proxy, not directly to Ollama.
       # The proxy performs Cisco inspection on prompts and model responses
       # before forwarding approved traffic to the host Ollama service.
       OLLAMA_BASE_URL: http://aidefense-proxy:${AIDEFENSE_PROXY_PORT}
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      WEBUI_URL: ${WEBUI_URL}
+      SCIM_ENABLED: ${SCIM_ENABLED}
+      SCIM_TOKEN: ${SCIM_TOKEN}
+      SCIM_AUTH_PROVIDER: ${SCIM_AUTH_PROVIDER}
+      ENABLE_OAUTH_SIGNUP: ${ENABLE_OAUTH_SIGNUP}
+      ENABLE_OAUTH_PERSISTENT_CONFIG: ${ENABLE_OAUTH_PERSISTENT_CONFIG}
+      OAUTH_PROVIDER_NAME: ${OAUTH_PROVIDER_NAME}
+      OPENID_PROVIDER_URL: ${OPENID_PROVIDER_URL}
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
+      OAUTH_SCOPES: ${OAUTH_SCOPES}
+      OPENID_REDIRECT_URI: ${OPENID_REDIRECT_URI}
     volumes:
       - open-webui-data:/app/backend/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ${NGINX_CONTAINER_NAME}
+    restart: unless-stopped
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    ports:
+      - "${NGINX_HTTP_PORT}:80"
+      - "${NGINX_HTTPS_PORT}:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST}
+      OPEN_WEBUI_UPSTREAM: open-webui:${OPEN_WEBUI_CONTAINER_PORT}
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
 
 volumes:
   open-webui-data:
