@@ -29,6 +29,9 @@ REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=30.0)
 FAIL_OPEN_ERROR_CODES = {408, 429, 500, 502, 503, 504}
 SAFE_BLOCK_MESSAGE = "This request was blocked by Cisco AI Defense policy. Reference: {ref}"
 OPEN_WEBUI_TASK_HEADER = "x-openwebui-task"
+ENFORCEMENT_MODE = os.getenv("AIDEFENSE_ENFORCEMENT_MODE", "monitor").strip().lower()
+if ENFORCEMENT_MODE not in {"monitor", "enforce"}:
+    ENFORCEMENT_MODE = "monitor"
 
 
 @app.get("/healthz")
@@ -59,6 +62,14 @@ def request_headers_for_forward(request: Request) -> dict[str, str]:
         for key, value in request.headers.items()
         if key.lower() not in excluded
     }
+
+
+def should_enforce(inspection_result: dict[str, Any] | None) -> bool:
+    return (
+        ENFORCEMENT_MODE == "enforce"
+        and inspection_result is not None
+        and inspection_result.get("is_safe") is False
+    )
 
 
 def response_headers_for_client(headers: httpx.Headers) -> dict[str, str]:
@@ -351,7 +362,7 @@ async def protected_ollama_call(endpoint: str, request: Request) -> Response:
         ingress_metadata["user"] = user_id
 
     ingress_result = await inspect_chat(ingress_messages, ingress_metadata)
-    if ingress_result is not None and ingress_result.get("is_safe") is False:
+    if should_enforce(ingress_result):
         log_event("request_blocked", transaction_id, endpoint=endpoint, direction="ingress", model=model)
         block_message = SAFE_BLOCK_MESSAGE.format(ref=transaction_id)
         blocked_payload = (
@@ -396,7 +407,7 @@ async def protected_ollama_call(endpoint: str, request: Request) -> Response:
         egress_metadata["user"] = user_id
 
     egress_result = await inspect_chat(egress_messages, egress_metadata)
-    if egress_result is not None and egress_result.get("is_safe") is False:
+    if should_enforce(egress_result):
         log_event("request_blocked", transaction_id, endpoint=endpoint, direction="egress", model=model)
         block_message = SAFE_BLOCK_MESSAGE.format(ref=transaction_id)
         blocked_payload = (

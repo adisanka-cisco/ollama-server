@@ -65,6 +65,7 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 AIDEFENSE_PROXY_PORT=8001
 AIDEFENSE_BASE_URL=https://us.api.inspect.aidefense.security.cisco.com
 AIDEFENSE_API_KEY=replace-on-host-only
+AIDEFENSE_ENFORCEMENT_MODE=monitor
 WEBUI_SECRET_KEY=replace-with-a-long-random-secret
 SCIM_ENABLED=true
 SCIM_TOKEN=replace-with-a-random-scim-token
@@ -85,6 +86,8 @@ Notes:
 - Open WebUI itself is wired in Compose to `http://aidefense-proxy:8001`.
 - Keep the real `AIDEFENSE_API_KEY` only on the host copy of `.env`.
 - The Cisco API key is injected into `aidefense-proxy` only, not into `open-webui`.
+- `AIDEFENSE_ENFORCEMENT_MODE=monitor` means the proxy inspects but never blocks.
+- Set `AIDEFENSE_ENFORCEMENT_MODE=enforce` only if you want the proxy to replace unsafe prompts or responses with the block message.
 - `ENABLE_OAUTH_SIGNUP` should remain `false` until you have the Duo OIDC `well-known` URL, client ID, and client secret.
 - SCIM is exposed from Open WebUI at `/api/v1/scim/v2/` once `SCIM_ENABLED=true`.
 
@@ -95,7 +98,8 @@ Notes:
 - Passes through other Ollama-compatible `/api/*` routes unchanged
 - Skips Cisco inspection for Open WebUI internal helper tasks when Open WebUI sends `X-OpenWebUI-Task`
 - Forces upstream Ollama requests to `stream=false`
-- If Cisco blocks a prompt or response, returns HTTP `200` with an Ollama-compatible assistant block message
+- In `monitor` mode, Cisco results are logged but never block the request
+- In `enforce` mode, unsafe prompt or response paths return HTTP `200` with an Ollama-compatible assistant block message
 - If Cisco is unreachable, times out, or returns `408/429/5xx`, the proxy fails open and forwards to Ollama
 
 ## Deployment
@@ -282,6 +286,7 @@ Common causes:
 - invalid `AIDEFENSE_API_KEY`
 - incorrect `AIDEFENSE_BASE_URL`
 - outbound network or DNS failure from the proxy container
+- `AIDEFENSE_ENFORCEMENT_MODE=enforce` when you expected monitor-only behavior
 
 ### Blocked requests are not readable in the UI
 
@@ -292,6 +297,18 @@ docker compose logs --tail=200 aidefense-proxy
 ```
 
 Blocked content is returned as an Ollama-compatible success response, not as HTTP `403`.
+
+### Prompts are being blocked even though Cisco policy is monitor-only
+
+Check:
+
+```bash
+grep '^AIDEFENSE_ENFORCEMENT_MODE=' .env
+docker compose logs --tail=200 aidefense-proxy
+```
+
+If the proxy is set to `enforce`, it will still block even when the Cisco-side policy is only monitoring.
+Set `AIDEFENSE_ENFORCEMENT_MODE=monitor` and restart the stack.
 
 ### Proxy container is unhealthy
 
