@@ -93,7 +93,9 @@ class CiscoXDRClient:
 
         token_type = payload.get("token_type")
         if isinstance(token_type, str) and token_type:
-            self._token_type = token_type
+            # Normalize auth scheme casing so downstream Authorization headers
+            # are always accepted as "Bearer <token>".
+            self._token_type = "Bearer"
 
         expires_in = payload.get("expires_in")
         try:

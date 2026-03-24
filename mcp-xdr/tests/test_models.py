@@ -55,3 +55,33 @@ def test_normalize_context_groups_entities_and_observables() -> None:
     assert context["users"][0]["name"] == "alice@example.com"
     assert context["ips"][0]["value"] == "10.0.0.5"
     assert context["domains"][0]["value"] == "example.org"
+
+
+def test_normalize_event_preserves_targets_and_indicators() -> None:
+    event = {
+        "id": "evt-1",
+        "title": "THREAT url malware",
+        "description": "Palo Alto Threat detection : THREAT url malware. Action: blocked\n\n**Application** : ssl",
+        "source": "Palo Alto Networks Firewall via Splunk",
+        "targets": [
+            {
+                "type": "endpoint",
+                "value": "10.63.15.72",
+                "observables": [{"type": "ip", "value": "10.63.15.72"}],
+                "is_asset": True,
+            }
+        ],
+        "observables": [{"type": "hostname", "value": "pass.nazarene.org"}],
+        "indicators": [{"title": "THREAT url malware", "value": "THREAT url malware"}],
+        "tactics_and_techniques": [{"id": "T1189", "title": "Drive-by Compromise"}],
+        "detection_interval": {"start_time": "2026-03-24T00:10:03.000Z"},
+    }
+
+    normalized = models.normalize_event(event)
+
+    assert normalized["action"] == "blocked"
+    assert normalized["application"] == "ssl"
+    assert normalized["targets"][0]["value"] == "10.63.15.72"
+    assert normalized["observables"][0]["value"] == "pass.nazarene.org"
+    assert normalized["indicator_titles"] == ["THREAT url malware"]
+    assert normalized["mitre_attack"][0]["id"] == "T1189"

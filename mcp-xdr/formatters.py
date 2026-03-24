@@ -44,7 +44,7 @@ def summarize_incident(incident: dict[str, Any]) -> str:
     if meta:
         parts.append(f"Status and ownership: {meta}.")
     if incident.get("description"):
-        parts.append(_clip(str(incident["description"]), limit=420))
+        parts.append(_clip(str(incident["description"]), limit=900))
     return "\n".join(parts) if parts else "Incident details retrieved."
 
 
@@ -60,7 +60,7 @@ def summarize_incident_summary(
 
     executive = report_data.get("executive_summary")
     if isinstance(executive, str) and executive.strip():
-        lines.append(_clip(executive, limit=700))
+        lines.append(_clip(executive, limit=1200))
 
     timeline = report_data.get("timeline") or export_data.get("timeline")
     if isinstance(timeline, list):
@@ -81,11 +81,17 @@ def summarize_detections(events: list[dict[str, Any]]) -> str:
     if not events:
         return "No detections or linked events were returned for this incident."
 
-    lines = [f"Returned {len(events)} linked detections/events."]
-    for event in events[:10]:
-        line = " - ".join(
+    lines = [
+        (
+            f"Returned {len(events)} linked detections/events. "
+            "Use the structured detections in data.detections as the authoritative result."
+        )
+    ]
+    for event in events[:12]:
+        header = " | ".join(
             str(part)
             for part in (
+                event.get("id"),
                 event.get("timestamp"),
                 event.get("title"),
                 event.get("severity"),
@@ -93,7 +99,35 @@ def summarize_detections(events: list[dict[str, Any]]) -> str:
             )
             if part
         )
-        lines.append(line)
+        if header:
+            lines.append(header)
+
+        details = []
+        if event.get("action"):
+            details.append(f"action={event['action']}")
+        if event.get("application"):
+            details.append(f"application={event['application']}")
+        if event.get("host"):
+            details.append(f"hosts={', '.join(str(item) for item in event['host'][:4])}")
+        if event.get("indicator_values"):
+            details.append(
+                f"indicators={', '.join(str(item) for item in event['indicator_values'][:4])}"
+            )
+        observable_values = [
+            item.get("value")
+            for item in event.get("observables", [])
+            if isinstance(item, dict) and item.get("value")
+        ]
+        if observable_values:
+            details.append(
+                f"observables={', '.join(str(item) for item in observable_values[:5])}"
+            )
+        if details:
+            lines.append("  " + " | ".join(details))
+
+        description = event.get("short_description") or event.get("description")
+        if description:
+            lines.append("  " + _clip(str(description), limit=320))
     return "\n".join(lines)
 
 

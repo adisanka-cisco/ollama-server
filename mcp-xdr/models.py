@@ -43,6 +43,127 @@ def compact(value: Any) -> Any:
     return value
 
 
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if value in (None, "", {}, []):
+        return []
+    return [value]
+
+
+def _stringify(value: Any) -> str | None:
+    if value in (None, "", [], {}):
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _collect_scalar_values(*values: Any) -> list[str]:
+    items: list[str] = []
+    for value in values:
+        for item in _as_list(value):
+            stringified = _stringify(item)
+            if stringified:
+                items.append(stringified)
+    return sorted(set(items))
+
+
+def _normalize_observable_item(item: dict[str, Any]) -> dict[str, Any]:
+    return compact(
+        {
+            "type": first_present(item, "type", "observableType"),
+            "value": first_present(item, "value", "title", "name"),
+            "title": first_present(item, "title", "name"),
+            "disposition": first_present(item, "disposition"),
+            "is_asset": first_present(item, "is_asset"),
+        }
+    )
+
+
+def _normalize_target_item(item: dict[str, Any]) -> dict[str, Any]:
+    observables = [
+        _normalize_observable_item(observable)
+        for observable in _as_list(first_present(item, "observables"))
+        if isinstance(observable, dict)
+    ]
+    return compact(
+        {
+            "type": first_present(item, "type", "observableType"),
+            "value": first_present(item, "value", "asset_value", "title", "name"),
+            "is_asset": first_present(item, "is_asset"),
+            "observables": observables,
+        }
+    )
+
+
+def _normalize_relation_item(item: dict[str, Any]) -> dict[str, Any]:
+    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    related = item.get("related") if isinstance(item.get("related"), dict) else {}
+    relation_info = item.get("relation_info") if isinstance(item.get("relation_info"), dict) else {}
+    actions = []
+    for action in _as_list(relation_info.get("actions")):
+        if isinstance(action, dict):
+            actions.append(
+                compact(
+                    {
+                        "type": first_present(action, "type"),
+                        "status": first_present(action, "status"),
+                        "source": first_present(action, "source"),
+                        "started_at": first_present(action, "started_at"),
+                    }
+                )
+            )
+
+    return compact(
+        {
+            "relation": first_present(item, "relation"),
+            "origin": first_present(item, "origin"),
+            "source": _normalize_target_item(source),
+            "related": _normalize_target_item(related),
+            "actions": actions,
+        }
+    )
+
+
+def _extract_application(description: Any) -> str | None:
+    if not isinstance(description, str):
+        return None
+    marker = "**Application** :"
+    if marker not in description:
+        return None
+    after = description.split(marker, 1)[1].strip()
+    line = after.splitlines()[0].strip()
+    return line or None
+
+
+def _extract_action(description: Any) -> str | None:
+    if not isinstance(description, str):
+        return None
+    marker = "Action:"
+    if marker not in description:
+        return None
+    after = description.split(marker, 1)[1].strip()
+    return after.splitlines()[0].strip(" .") or None
+
+
+def _normalize_mitre_items(value: Any) -> list[dict[str, Any]] | None:
+    items = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            items.append(
+                compact(
+                    {
+                        "id": first_present(item, "id"),
+                        "title": first_present(item, "title", "name"),
+                        "mitre_type": first_present(item, "mitre_type", "type"),
+                        "score": first_present(item, "score"),
+                    }
+                )
+            )
+    return items or None
+
+
 def extract_collection(payload: Any, preferred_keys: list[str] | None = None) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
@@ -141,39 +262,96 @@ def _event_actor(event: dict[str, Any], role: str) -> list[str]:
 
 
 def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
+    description = first_present(event, "description", "summary", "reason", "short_description")
     mitre = first_present(
         event,
         "mitre_attack",
         "mitre",
         "attack",
-        "attack_details",
         "tactics_techniques",
+        "tactics_and_techniques",
+        "mitre_data",
     )
+    observables = [
+        _normalize_observable_item(observable)
+        for observable in _as_list(first_present(event, "observables"))
+        if isinstance(observable, dict)
+    ]
+    targets = [
+        _normalize_target_item(target)
+        for target in _as_list(first_present(event, "targets"))
+        if isinstance(target, dict)
+    ]
+    indicators = [
+        compact(
+            {
+                "id": first_present(indicator, "id"),
+                "title": first_present(indicator, "title", "name"),
+                "value": first_present(indicator, "value"),
+                "description": first_present(indicator, "description", "short_description"),
+            }
+        )
+        for indicator in _as_list(first_present(event, "indicators"))
+        if isinstance(indicator, dict)
+    ]
+    relations = [
+        _normalize_relation_item(relation)
+        for relation in _as_list(first_present(event, "relations"))
+        if isinstance(relation, dict)
+    ]
     normalized = {
         "id": first_present(event, "id", "event_id"),
-        "timestamp": first_present(event, "timestamp", "created_at", "observed_time", "time"),
+        "timestamp": first_present(
+            event,
+            "timestamp",
+            "detection_interval.start_time",
+            "observed_time.start_time",
+            "activity_interval.start_time",
+            "created_at",
+            "time",
+        ),
         "title": first_present(event, "title", "name", "event_type"),
-        "description": first_present(event, "description", "summary", "reason"),
+        "description": description,
+        "short_description": first_present(event, "short_description"),
         "severity": first_present(event, "severity", "risk.severity"),
         "confidence": first_present(event, "confidence", "risk.confidence"),
         "source_product": first_present(
             event,
             "source",
             "source_product",
+            "module_data.module",
             "module",
             "module_name",
             "device_type",
         ),
+        "module": first_present(event, "module", "module_data.module"),
+        "sensor": first_present(event, "sensor"),
+        "type": first_present(event, "type"),
+        "count": first_present(event, "count"),
+        "severity_label": first_present(event, "severity_label"),
+        "confidence_label": first_present(event, "confidence_label"),
+        "tlp": first_present(event, "tlp"),
+        "notable": first_present(event, "notable"),
+        "application": _extract_application(description),
+        "action": _extract_action(description)
+        or first_present(event, "action", "disposition"),
         "user": _event_actor(event, "user") or _event_actor(event, "target_user"),
         "host": _event_actor(event, "host")
         or _event_actor(event, "device")
-        or _event_actor(event, "target_host"),
-        "mitre_attack": mitre,
+        or _event_actor(event, "target_host")
+        or _collect_scalar_values([target.get("value") for target in targets if target.get("type") == "endpoint"]),
+        "indicator_titles": _collect_scalar_values([indicator.get("title") for indicator in indicators]),
+        "indicator_values": _collect_scalar_values([indicator.get("value") for indicator in indicators]),
+        "targets": targets,
+        "observables": observables,
+        "relations": relations,
+        "mitre_attack": _normalize_mitre_items(mitre),
         "raw_refs": compact(
             {
                 "observable": first_present(event, "observable"),
-                "targets": first_present(event, "targets"),
                 "sensor": first_present(event, "sensor"),
+                "external_ids": first_present(event, "external_ids"),
+                "source_refs": first_present(event, "external_references"),
             }
         ),
     }

@@ -133,7 +133,12 @@ async def xdr_get_incident(incident_id: str) -> dict[str, Any]:
     normalized = normalize_incident(incident_object)
     envelope = ToolEnvelope(
         summary_text=summarize_incident(normalized),
-        data={"normalized": normalized, "raw_data": raw_payload},
+        data={
+            "incident_id": incident_id,
+            "incident": normalized,
+            "normalized": normalized,
+            "raw_data": raw_payload,
+        },
         returned_count=1,
         total_available=1,
     )
@@ -162,6 +167,10 @@ async def xdr_get_incident_summary(incident_id: str) -> dict[str, Any]:
             normalized_report,
         ),
         data={
+            "incident_id": incident_id,
+            "incident": normalized_incident,
+            "export": normalized_export,
+            "report": normalized_report,
             "normalized": {
                 "incident": normalized_incident,
                 "export": normalized_export,
@@ -197,6 +206,8 @@ async def xdr_get_incident_detections(incident_id: str, limit: int = 100) -> dic
     envelope = ToolEnvelope(
         summary_text=summarize_detections(capped_events),
         data={
+            "incident_id": incident_id,
+            "detections": capped_events,
             "normalized": capped_events,
             "raw_data": {"events": event_items},
         },
@@ -225,6 +236,8 @@ async def xdr_get_incident_context(incident_id: str) -> dict[str, Any]:
     envelope = ToolEnvelope(
         summary_text=summarize_context(context),
         data={
+            "incident_id": incident_id,
+            "context": context,
             "normalized": context,
             "raw_data": {"entities": entity_payload, "observables": observable_payload},
         },
