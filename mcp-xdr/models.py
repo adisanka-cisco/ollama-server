@@ -381,6 +381,172 @@ def normalize_export(export_data: dict[str, Any]) -> dict[str, Any]:
     return compact(normalized)
 
 
+def _normalize_storyboard_confidence_factors(value: Any) -> list[dict[str, Any]] | None:
+    items = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            items.append(
+                compact(
+                    {
+                        "label": first_present(item, "label", "title", "name"),
+                        "description": first_present(item, "description", "reason", "summary"),
+                        "score": first_present(item, "score", "confidence"),
+                    }
+                )
+            )
+        else:
+            stringified = _stringify(item)
+            if stringified:
+                items.append({"label": stringified})
+    return items or None
+
+
+def _normalize_storyboard_observable(item: dict[str, Any]) -> dict[str, Any]:
+    reputations = []
+    for reputation in _as_list(first_present(item, "reputations")):
+        if isinstance(reputation, dict):
+            reputations.append(
+                compact(
+                    {
+                        "source": first_present(reputation, "source", "name"),
+                        "disposition": first_present(reputation, "disposition", "verdict"),
+                        "score": first_present(reputation, "score"),
+                    }
+                )
+            )
+
+    return compact(
+        {
+            "uid": first_present(item, "uid", "id"),
+            "type": first_present(item, "entity_type", "type", "observable_type"),
+            "value": first_present(item, "value", "ip", "domain", "url", "hostname", "user"),
+            "title": first_present(item, "title", "name"),
+            "first_observed": first_present(item, "first_observed", "first_seen"),
+            "last_observed": first_present(item, "last_observed", "last_seen"),
+            "asn": first_present(item, "asn"),
+            "country": first_present(item, "country"),
+            "reputations": reputations or None,
+        }
+    )
+
+
+def _normalize_storyboard_analysis_item(item: dict[str, Any]) -> dict[str, Any]:
+    entity_investigations = []
+    for entity in _as_list(first_present(item, "entity_investigations")):
+        if isinstance(entity, dict):
+            entity_investigations.append(
+                compact(
+                    {
+                        "uid": first_present(entity, "uid", "id"),
+                        "entity_type": first_present(entity, "entity_type", "type"),
+                        "value": first_present(entity, "value", "name", "title", "ip", "url", "hostname", "user"),
+                        "title": first_present(entity, "title", "name"),
+                    }
+                )
+            )
+
+    detection_title_by_uid = first_present(item, "detection_title_by_uid")
+    titles = []
+    if isinstance(detection_title_by_uid, dict):
+        for uid, title in detection_title_by_uid.items():
+            title_string = _stringify(title)
+            if title_string:
+                titles.append(compact({"uid": uid, "title": title_string}))
+
+    return compact(
+        {
+            "uid": first_present(item, "uid", "id"),
+            "time": first_present(item, "time", "timestamp"),
+            "title": first_present(item, "detection_title", "title", "name"),
+            "description": first_present(item, "detection_desc", "description", "summary"),
+            "confidence_factors": _normalize_storyboard_confidence_factors(
+                first_present(item, "confidence_factors")
+            ),
+            "detection_titles_by_uid": titles or None,
+            "aggregated_detection_uids": _as_list(first_present(item, "aggregated_detection_uids")) or None,
+            "entity_investigations": entity_investigations or None,
+        }
+    )
+
+
+def _normalize_storyboard_analysis_section(value: Any) -> list[dict[str, Any]] | None:
+    items = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            items.append(
+                compact(
+                    {
+                        "uid": first_present(item, "uid", "id"),
+                        "type": first_present(item, "entity_type", "type"),
+                        "value": first_present(item, "value", "name", "title", "ip", "url", "hostname", "user"),
+                        "title": first_present(item, "title", "name"),
+                        "description": first_present(item, "description", "summary"),
+                        "confidence_factors": _normalize_storyboard_confidence_factors(
+                            first_present(item, "confidence_factors")
+                        ),
+                    }
+                )
+            )
+    return items or None
+
+
+def normalize_storyboard(storyboard: dict[str, Any]) -> dict[str, Any]:
+    observables = [
+        _normalize_storyboard_observable(item)
+        for item in _as_list(first_present(storyboard, "observables"))
+        if isinstance(item, dict)
+    ]
+    detection_analysis = [
+        _normalize_storyboard_analysis_item(item)
+        for item in _as_list(first_present(storyboard, "detection_analysis"))
+        if isinstance(item, dict)
+    ]
+    summary_structured = storyboard.get("summary_structured") if isinstance(storyboard.get("summary_structured"), dict) else {}
+    classification = storyboard.get("classification") if isinstance(storyboard.get("classification"), dict) else {}
+
+    normalized = {
+        "title": first_present(storyboard, "title"),
+        "headline": first_present(storyboard, "headline"),
+        "summary": first_present(storyboard, "summary"),
+        "time": first_present(storyboard, "time"),
+        "product_names": _as_list(first_present(storyboard, "product_names")) or None,
+        "classification": compact(
+            {
+                "classification": first_present(classification, "classification"),
+                "confidence": first_present(classification, "confidence"),
+                "confidence_factors": _normalize_storyboard_confidence_factors(
+                    first_present(classification, "confidence_factors")
+                ),
+            }
+        ),
+        "summary_structured": compact(
+            {
+                "statement": first_present(summary_structured, "statement"),
+                "evidence": first_present(summary_structured, "evidence"),
+                "reasoning": first_present(summary_structured, "reasoning"),
+                "detection_investigation_uids": _as_list(
+                    first_present(summary_structured, "detection_investigation_uids")
+                )
+                or None,
+            }
+        ),
+        "observables": observables or None,
+        "detection_analysis": detection_analysis or None,
+        "device_analysis": _normalize_storyboard_analysis_section(first_present(storyboard, "device_analysis")),
+        "user_analysis": _normalize_storyboard_analysis_section(first_present(storyboard, "user_analysis")),
+        "counts": compact(
+            {
+                "observables": len(observables) or None,
+                "detection_analysis": len(detection_analysis) or None,
+                "device_analysis": len(_as_list(first_present(storyboard, "device_analysis"))) or None,
+                "user_analysis": len(_as_list(first_present(storyboard, "user_analysis"))) or None,
+                "products": len(_as_list(first_present(storyboard, "product_names"))) or None,
+            }
+        ),
+    }
+    return compact(normalized)
+
+
 def normalize_context(
     entities: list[dict[str, Any]],
     observables: list[dict[str, Any]],

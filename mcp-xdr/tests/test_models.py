@@ -85,3 +85,49 @@ def test_normalize_event_preserves_targets_and_indicators() -> None:
     assert normalized["observables"][0]["value"] == "pass.nazarene.org"
     assert normalized["indicator_titles"] == ["THREAT url malware"]
     assert normalized["mitre_attack"][0]["id"] == "T1189"
+
+
+def test_normalize_storyboard_preserves_summary_and_observables() -> None:
+    storyboard = {
+        "title": "Suspicious Malware Storyboard",
+        "headline": "Malware blocked after outbound SSL traffic",
+        "summary": "A firewall blocked a known-malicious URL request.",
+        "time": "2026-03-24T00:10:03.000Z",
+        "product_names": ["Palo Alto Networks Firewall via Splunk"],
+        "classification": {
+            "classification": "malicious",
+            "confidence": "high",
+            "confidence_factors": [{"label": "Blocked by policy", "description": "The request was blocked."}],
+        },
+        "summary_structured": {
+            "statement": "The incident consists of blocked malware URL activity.",
+            "evidence": "Multiple THREAT url malware detections occurred.",
+            "reasoning": "Repeated blocked events align with a malicious outbound request pattern.",
+            "detection_investigation_uids": ["det-1", "det-2"],
+        },
+        "observables": [
+            {"entity_type": "ip", "ip": "10.63.15.72", "uid": "obs-1"},
+            {"entity_type": "url", "url": "pass.nazarene.org", "uid": "obs-2"},
+        ],
+        "detection_analysis": [
+            {
+                "uid": "det-1",
+                "time": "2026-03-24T00:10:03.000Z",
+                "detection_title": "THREAT url malware",
+                "detection_desc": "Blocked malware URL request over SSL.",
+                "aggregated_detection_uids": ["agg-1"],
+                "detection_title_by_uid": {"agg-1": "THREAT url malware"},
+                "entity_investigations": [{"uid": "entity-1", "entity_type": "host", "value": "10.63.15.72"}],
+            }
+        ],
+    }
+
+    normalized = models.normalize_storyboard(storyboard)
+
+    assert normalized["title"] == "Suspicious Malware Storyboard"
+    assert normalized["classification"]["classification"] == "malicious"
+    assert normalized["summary_structured"]["statement"] == "The incident consists of blocked malware URL activity."
+    assert normalized["observables"][0]["value"] == "10.63.15.72"
+    assert normalized["observables"][1]["value"] == "pass.nazarene.org"
+    assert normalized["detection_analysis"][0]["title"] == "THREAT url malware"
+    assert normalized["counts"]["observables"] == 2

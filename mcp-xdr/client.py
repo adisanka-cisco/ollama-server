@@ -197,3 +197,6 @@ class CiscoXDRClient:
 
     async def get_incident_observables(self, incident_id: str) -> Any:
         return await self._request("GET", f"/v2/incident/{incident_id}/observables")
+
+    async def get_incident_storyboard(self, incident_id: str) -> Any:
+        return await self._request("GET", f"/v3/incident/{incident_id}/storyboard")

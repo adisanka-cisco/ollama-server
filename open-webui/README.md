@@ -265,6 +265,7 @@ The initial tool set is:
 - `xdr_get_incident_summary`
 - `xdr_get_incident_detections`
 - `xdr_get_incident_context`
+- `xdr_get_incident_storyboard`
 
 ## Troubleshooting
 

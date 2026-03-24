@@ -15,6 +15,7 @@ from formatters import (
     summarize_incident,
     summarize_incident_list,
     summarize_incident_summary,
+    summarize_storyboard,
 )
 from models import (
     ToolEnvelope,
@@ -25,6 +26,7 @@ from models import (
     normalize_export,
     normalize_incident,
     normalize_report,
+    normalize_storyboard,
 )
 
 
@@ -243,6 +245,40 @@ async def xdr_get_incident_context(incident_id: str) -> dict[str, Any]:
         },
         returned_count=len(entities) + len(observables),
         total_available=len(entities) + len(observables),
+    )
+    return envelope.model_dump(mode="json")
+
+
+@mcp.tool
+async def xdr_get_incident_storyboard(incident_id: str) -> dict[str, Any]:
+    """Get the Cisco XDR incident storyboard with high-fidelity chronology and context preserved."""
+    _ensure_configured()
+    try:
+        storyboard_payload = await client.get_incident_storyboard(incident_id)
+    except XDRClientError as exc:
+        raise _tool_error(exc) from exc
+
+    storyboard_object = storyboard_payload if isinstance(storyboard_payload, dict) else {"value": storyboard_payload}
+    normalized = normalize_storyboard(storyboard_object)
+    entry_count = 0
+    counts = normalized.get("counts")
+    if isinstance(counts, dict):
+        entry_count = sum(
+            int(value)
+            for key, value in counts.items()
+            if key in {"detection_analysis", "observables", "device_analysis", "user_analysis"} and isinstance(value, int)
+        )
+
+    envelope = ToolEnvelope(
+        summary_text=summarize_storyboard(normalized),
+        data={
+            "incident_id": incident_id,
+            "storyboard": normalized,
+            "normalized": normalized,
+            "raw_data": storyboard_payload,
+        },
+        returned_count=entry_count or 1,
+        total_available=entry_count or 1,
     )
     return envelope.model_dump(mode="json")
 

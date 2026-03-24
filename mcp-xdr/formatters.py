@@ -144,3 +144,63 @@ def summarize_context(context: dict[str, Any]) -> str:
     if not present:
         return "No linked incident context was returned."
     return "Incident context counts: " + ", ".join(present)
+
+
+def summarize_storyboard(storyboard: dict[str, Any]) -> str:
+    if not storyboard:
+        return "No incident storyboard was returned."
+
+    lines = [
+        "Incident storyboard retrieved. Use data.storyboard as the authoritative storyboard context."
+    ]
+
+    title = storyboard.get("title") or storyboard.get("headline")
+    if title:
+        lines.append(str(title))
+
+    summary_structured = storyboard.get("summary_structured") if isinstance(storyboard.get("summary_structured"), dict) else {}
+    statement = summary_structured.get("statement")
+    if statement:
+        lines.append(_clip(str(statement), limit=700))
+    elif storyboard.get("summary"):
+        lines.append(_clip(str(storyboard["summary"]), limit=700))
+
+    classification = storyboard.get("classification") if isinstance(storyboard.get("classification"), dict) else {}
+    class_parts = []
+    if classification.get("classification"):
+        class_parts.append(str(classification["classification"]))
+    if classification.get("confidence"):
+        class_parts.append(f"confidence={classification['confidence']}")
+    if class_parts:
+        lines.append("Classification: " + ", ".join(class_parts))
+
+    counts = storyboard.get("counts") if isinstance(storyboard.get("counts"), dict) else {}
+    count_parts = []
+    for key, label in (
+        ("detection_analysis", "detection analyses"),
+        ("observables", "observables"),
+        ("device_analysis", "device analyses"),
+        ("user_analysis", "user analyses"),
+        ("products", "products"),
+    ):
+        value = counts.get(key)
+        if value:
+            count_parts.append(f"{value} {label}")
+    if count_parts:
+        lines.append("Storyboard coverage: " + ", ".join(count_parts))
+
+    products = storyboard.get("product_names")
+    if isinstance(products, list) and products:
+        lines.append("Products: " + ", ".join(str(item) for item in products[:6]))
+
+    observables = storyboard.get("observables")
+    if isinstance(observables, list) and observables:
+        observable_values = [item.get("value") for item in observables if isinstance(item, dict) and item.get("value")]
+        if observable_values:
+            lines.append("Key observables: " + ", ".join(str(item) for item in observable_values[:8]))
+
+    evidence = summary_structured.get("evidence")
+    if evidence:
+        lines.append("Evidence: " + _clip(str(evidence), limit=500))
+
+    return "\n".join(lines)
