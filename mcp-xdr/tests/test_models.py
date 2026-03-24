@@ -1,3 +1,5 @@
+"""Regression tests for the normalization layer that shapes Cisco payloads."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -19,6 +21,8 @@ models = _load_module("mcp_xdr_models", "models.py")
 
 
 def test_normalize_incident_preserves_key_metadata() -> None:
+    # Incident normalization should keep the user-facing metadata that drives
+    # summaries and follow-up lookups.
     incident = {
         "id": "INC-001",
         "title": "Suspicious PowerShell Activity",
@@ -40,6 +44,7 @@ def test_normalize_incident_preserves_key_metadata() -> None:
 
 
 def test_normalize_context_groups_entities_and_observables() -> None:
+    # Context is grouped into the categories users most often ask for directly.
     entities = [
         {"type": "host", "id": "host-1", "name": "srv-1"},
         {"type": "user", "id": "user-1", "name": "alice@example.com"},
@@ -58,6 +63,8 @@ def test_normalize_context_groups_entities_and_observables() -> None:
 
 
 def test_normalize_event_preserves_targets_and_indicators() -> None:
+    # Event shaping should preserve the detection fields the model needs for a
+    # useful narrative without losing nested target/indicator data.
     event = {
         "id": "evt-1",
         "title": "THREAT url malware",
@@ -88,6 +95,8 @@ def test_normalize_event_preserves_targets_and_indicators() -> None:
 
 
 def test_normalize_storyboard_preserves_summary_and_observables() -> None:
+    # Storyboard normalization should keep the assembled incident narrative plus
+    # the key observable and detection-analysis sections.
     storyboard = {
         "title": "Suspicious Malware Storyboard",
         "headline": "Malware blocked after outbound SSL traffic",

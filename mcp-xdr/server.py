@@ -1,3 +1,9 @@
+"""FastMCP server that exposes a small read-only Cisco XDR incident toolset.
+
+Each tool returns the same envelope shape so Open WebUI gets predictable
+structured data and a compact human-readable summary for the model.
+"""
+
 from __future__ import annotations
 
 import os
@@ -40,7 +46,8 @@ XDR_TOKEN_REFRESH_SKEW_SECONDS = int(os.getenv("XDR_TOKEN_REFRESH_SKEW_SECONDS",
 MCP_XDR_PORT = int(os.getenv("MCP_XDR_PORT", "8002").strip())
 MCP_XDR_PATH = os.getenv("MCP_XDR_PATH", "/mcp/").strip() or "/mcp/"
 
-
+# One shared client instance is enough because token caching is handled inside
+# the client and the FastMCP server is long-lived.
 client = CiscoXDRClient(
     client_id=XDR_CLIENT_ID,
     client_secret=XDR_CLIENT_SECRET,
@@ -89,9 +96,15 @@ async def xdr_list_incidents(
     except XDRClientError as exc:
         raise _tool_error(exc) from exc
 
-    incidents = [normalize_incident(item) for item in extract_collection(raw_payload, preferred_keys=["incidents", "items", "results"])]
+    incidents = [
+        normalize_incident(item)
+        for item in extract_collection(raw_payload, preferred_keys=["incidents", "items", "results"])
+    ]
 
     def matches(item: dict[str, Any]) -> bool:
+        # Conure search stays broad and we apply lightweight client-side filters
+        # so the tool is still useful even when the upstream endpoint does not
+        # expose every filter we want in v1.
         if status and str(item.get("status", "")).lower() != status.lower():
             return False
         if priority and str(item.get("priority", "")).lower() != priority.lower():
@@ -263,6 +276,8 @@ async def xdr_get_incident_storyboard(incident_id: str) -> dict[str, Any]:
     entry_count = 0
     counts = normalized.get("counts")
     if isinstance(counts, dict):
+        # Storyboard does not expose a single natural "row count", so we use the
+        # combined size of the main narrative sections as a rough measure.
         entry_count = sum(
             int(value)
             for key, value in counts.items()

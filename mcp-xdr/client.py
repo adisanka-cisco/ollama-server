@@ -1,3 +1,10 @@
+"""Async Cisco XDR Conure client with safe OAuth client-credentials handling.
+
+This module owns the security boundary for XDR access: client credentials come
+from environment variables, access tokens are cached only in memory, and
+upstream errors are converted into safe messages for the MCP layer.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -51,6 +58,8 @@ class CiscoXDRClient:
         self._access_token: str | None = None
         self._token_type: str = "Bearer"
         self._expires_at: float = 0.0
+        # A lock prevents concurrent requests from stampeding the token endpoint
+        # when the cached access token is missing or near expiry.
         self._token_lock = asyncio.Lock()
 
     async def aclose(self) -> None:
@@ -60,6 +69,8 @@ class CiscoXDRClient:
             await self._auth_client.aclose()
 
     async def _fetch_access_token(self) -> str:
+        # Cisco XDR uses OAuth2 client-credentials for this integration. There is
+        # no refresh token; we simply request a new access token when needed.
         try:
             response = await self._auth_client.post(
                 self.token_url,
@@ -108,6 +119,8 @@ class CiscoXDRClient:
         return access_token
 
     async def _get_access_token(self, *, force_refresh: bool = False) -> str:
+        # Refresh a little early so long-running Conure calls do not start with a
+        # token that is about to expire mid-request.
         if not force_refresh and self._access_token:
             if time.time() < self._expires_at - self.refresh_skew_seconds:
                 return self._access_token
@@ -126,6 +139,8 @@ class CiscoXDRClient:
         params: dict[str, Any] | None = None,
         retry_on_401: bool = True,
     ) -> Any:
+        # All Conure calls flow through one method so auth, retry behavior, and
+        # error mapping stay consistent across every MCP tool.
         token = await self._get_access_token()
         url = f"{self.conure_base_url}{path}"
 
@@ -142,6 +157,8 @@ class CiscoXDRClient:
             raise XDRClientError("Could not reach the Cisco XDR Conure API.") from exc
 
         if response.status_code == 401 and retry_on_401:
+            # A single forced refresh is enough to recover from a stale token
+            # without looping forever on permanently bad credentials.
             await self._get_access_token(force_refresh=True)
             return await self._request(method, path, params=params, retry_on_401=False)
 
@@ -199,4 +216,6 @@ class CiscoXDRClient:
         return await self._request("GET", f"/v2/incident/{incident_id}/observables")
 
     async def get_incident_storyboard(self, incident_id: str) -> Any:
+        # Storyboard is exposed under Conure v3 even though the other incident
+        # detail endpoints used here remain on v2.
         return await self._request("GET", f"/v3/incident/{incident_id}/storyboard")

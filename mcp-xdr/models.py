@@ -1,3 +1,10 @@
+"""Normalization helpers for turning raw Conure responses into tool-friendly shapes.
+
+The goal here is not to heavily summarize Cisco data. Instead, these helpers
+preserve the high-value incident fields while removing repetitive wrappers and
+normalizing common variants in Conure payloads.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -26,6 +33,8 @@ def _get_path(data: Any, path: str) -> Any:
 
 
 def first_present(data: dict[str, Any], *paths: str) -> Any:
+    # Conure payloads vary a bit across endpoints, so the MCP layer looks for a
+    # field in several likely locations before giving up.
     for path in paths:
         value = _get_path(data, path)
         if value not in (None, "", [], {}):
@@ -34,6 +43,8 @@ def first_present(data: dict[str, Any], *paths: str) -> Any:
 
 
 def compact(value: Any) -> Any:
+    # Compact nested payloads after normalization so the model gets signal-heavy
+    # JSON without null-heavy wrappers.
     if isinstance(value, dict):
         items = {key: compact(val) for key, val in value.items()}
         return {key: val for key, val in items.items() if val not in (None, "", [], {})}
@@ -165,6 +176,8 @@ def _normalize_mitre_items(value: Any) -> list[dict[str, Any]] | None:
 
 
 def extract_collection(payload: Any, preferred_keys: list[str] | None = None) -> list[dict[str, Any]]:
+    # Different Conure endpoints wrap collections differently. This helper lets
+    # each tool ask for the likely keys while still falling back safely.
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
 
@@ -262,6 +275,8 @@ def _event_actor(event: dict[str, Any], role: str) -> list[str]:
 
 
 def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
+    # Detection events can arrive with rich nested targets/relations. Normalize
+    # them once so the LLM sees a stable schema across vendors and modules.
     description = first_present(event, "description", "summary", "reason", "short_description")
     mitre = first_present(
         event,
@@ -491,6 +506,9 @@ def _normalize_storyboard_analysis_section(value: Any) -> list[dict[str, Any]] |
 
 
 def normalize_storyboard(storyboard: dict[str, Any]) -> dict[str, Any]:
+    # Storyboard is already one of the most assembled XDR views, so this helper
+    # keeps most of the original structure and only normalizes the nested
+    # sections the model is most likely to reason over directly.
     observables = [
         _normalize_storyboard_observable(item)
         for item in _as_list(first_present(storyboard, "observables"))
@@ -551,6 +569,8 @@ def normalize_context(
     entities: list[dict[str, Any]],
     observables: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    # Context is grouped by the entity/observable types users usually ask about
+    # directly: hosts, users, IPs, domains, hashes, and URLs.
     grouped_entities: dict[str, list[dict[str, Any]]] = defaultdict(list)
     grouped_observables: dict[str, list[dict[str, Any]]] = defaultdict(list)
 

@@ -72,6 +72,8 @@ from open_webui.env import (
 from open_webui.constants import ERROR_MESSAGES
 
 log = logging.getLogger(__name__)
+# Open WebUI helper tasks need an explicit server-side marker so the downstream
+# AI Defense proxy can bypass inspection for synthetic prompts like tags/titles.
 OPEN_WEBUI_TASK_HEADER = "X-OpenWebUI-Task"
 
 
@@ -115,7 +117,9 @@ async def send_post_request(
     user: UserModel = None,
     metadata: Optional[dict] = None,
 ):
-
+    # This is the key customization point in the Open WebUI patch. Helper-task
+    # metadata exists here, before Open WebUI strips metadata from the outgoing
+    # Ollama-compatible request body.
     r = None
     streaming = False
     try:
@@ -134,6 +138,8 @@ async def send_post_request(
                 headers[FORWARD_SESSION_INFO_HEADER_CHAT_ID] = metadata.get("chat_id")
 
         if metadata and metadata.get("task"):
+            # Forward the task identity as a header instead of in the payload so
+            # the proxy can distinguish internal prompts from real user chats.
             headers[OPEN_WEBUI_TASK_HEADER] = str(metadata.get("task"))
 
         r = await session.post(

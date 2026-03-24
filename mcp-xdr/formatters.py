@@ -1,9 +1,18 @@
+"""Small text formatters that turn normalized Cisco data into model-friendly summaries.
+
+The MCP tools always return structured JSON in `data`; these helpers generate
+the shorter `summary_text` field so the model has a concise starting point
+before it inspects the richer payload.
+"""
+
 from __future__ import annotations
 
 from typing import Any
 
 
 def _clip(text: str, limit: int = 240) -> str:
+    # Keep summaries readable without stripping the richer structured fields that
+    # are still available in the tool's `data` section.
     text = " ".join(text.split())
     if len(text) <= limit:
         return text
@@ -83,6 +92,8 @@ def summarize_detections(events: list[dict[str, Any]]) -> str:
 
     lines = [
         (
+            # The model sometimes paraphrases tool output too freely, so we make
+            # the authoritative field explicit in the summary itself.
             f"Returned {len(events)} linked detections/events. "
             "Use the structured detections in data.detections as the authoritative result."
         )
@@ -151,6 +162,8 @@ def summarize_storyboard(storyboard: dict[str, Any]) -> str:
         return "No incident storyboard was returned."
 
     lines = [
+        # Storyboard tends to be the richest incident narrative view, so the
+        # summary explicitly points the model to the same field in `data`.
         "Incident storyboard retrieved. Use data.storyboard as the authoritative storyboard context."
     ]
 

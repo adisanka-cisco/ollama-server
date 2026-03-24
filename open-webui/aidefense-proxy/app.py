@@ -1,3 +1,10 @@
+"""Ollama-compatible proxy that inserts Cisco AI Defense inspection in the request path.
+
+The proxy sits between Open WebUI and the host Ollama service so prompts and
+responses can be inspected without exposing the Cisco API key to the browser or
+to Ollama itself.
+"""
+
 import json
 import logging
 import os
@@ -18,6 +25,8 @@ LOGGER = logging.getLogger("aidefense_proxy")
 
 app = FastAPI()
 
+# Runtime configuration is intentionally env-driven so the same container image
+# can be reused across AWS and on-prem deployments.
 AIDEFENSE_API_KEY = os.environ["AIDEFENSE_API_KEY"]
 AIDEFENSE_BASE_URL = os.getenv(
     "AIDEFENSE_BASE_URL",
@@ -57,6 +66,8 @@ def request_headers_for_forward(request: Request) -> dict[str, str]:
         "accept-encoding",
         OPEN_WEBUI_TASK_HEADER,
     }
+    # Strip hop-by-hop headers and the internal task marker before forwarding to
+    # Ollama so only application-level headers cross the proxy boundary.
     return {
         key: value
         for key, value in request.headers.items()
@@ -65,6 +76,8 @@ def request_headers_for_forward(request: Request) -> dict[str, str]:
 
 
 def should_enforce(inspection_result: dict[str, Any] | None) -> bool:
+    # Cisco portal policy mode is separate from local proxy behavior. We only
+    # synthesize a block response when the proxy itself is running in enforce mode.
     return (
         ENFORCEMENT_MODE == "enforce"
         and inspection_result is not None
@@ -130,6 +143,8 @@ def internal_task_name(request: Request) -> str | None:
 
 
 def latest_user_message(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    # For user-visible chats we inspect only the latest turn, not the full chat
+    # history, so AI Defense events reflect what the user just asked.
     for message in reversed(messages):
         if message.get("role") == "user":
             return [{"role": "user", "content": message.get("content", "")}]
@@ -152,6 +167,8 @@ def assistant_text(endpoint: str, payload: dict[str, Any]) -> str:
 
 
 def ollama_chat_block_payload(model: str, message: str) -> dict[str, Any]:
+    # Block payloads mimic Ollama's response shape so Open WebUI renders them as
+    # normal assistant messages instead of transport errors.
     return {
         "model": model,
         "created_at": utc_now(),
@@ -244,6 +261,8 @@ async def inspect_chat(
     messages: list[dict[str, str]],
     metadata: dict[str, Any],
 ) -> dict[str, Any] | None:
+    # The Cisco inspection API expects a chat-style payload even when the source
+    # request came from Ollama's simpler /api/generate endpoint.
     payload = {"messages": messages, "metadata": metadata, "config": {}}
     headers = {
         "X-Cisco-AI-Defense-API-Key": AIDEFENSE_API_KEY,
@@ -274,6 +293,8 @@ async def inspect_chat(
         return body
 
     if response.status_code in FAIL_OPEN_ERROR_CODES:
+        # Availability wins over inspection outages in this deployment. If Cisco
+        # is transiently unavailable we log it and allow the request to continue.
         log_event(
             "inspection_fail_open",
             transaction_id,
@@ -329,6 +350,8 @@ async def protected_ollama_call(endpoint: str, request: Request) -> Response:
     requested_stream = bool(original_payload.get("stream", False))
     task_name = internal_task_name(request)
     if task_name:
+        # Open WebUI helper tasks such as title/tag/follow-up generation are
+        # marked explicitly and bypass Cisco inspection entirely.
         log_event(
             "inspection_skipped",
             transaction_id,
@@ -377,6 +400,8 @@ async def protected_ollama_call(endpoint: str, request: Request) -> Response:
         )
 
     forwarded_payload = dict(original_payload)
+    # We force non-streaming upstream so the full assistant response can be
+    # inspected before anything is returned to Open WebUI.
     forwarded_payload["stream"] = False
     log_event("ollama_forward", transaction_id, endpoint=endpoint, model=model)
     ollama_response = await forward_to_ollama(

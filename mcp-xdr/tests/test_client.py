@@ -1,3 +1,5 @@
+"""Targeted client tests for token caching and safe auth failure behavior."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -25,6 +27,7 @@ XDRClientError = client_module.XDRClientError
 
 @pytest.mark.asyncio
 async def test_client_caches_client_credentials_token_until_refresh_window() -> None:
+    # Two API calls should reuse the same access token while it is still fresh.
     token_calls = 0
     api_calls = 0
 
@@ -58,6 +61,8 @@ async def test_client_caches_client_credentials_token_until_refresh_window() -> 
 
 @pytest.mark.asyncio
 async def test_client_retries_once_with_fresh_token_on_401() -> None:
+    # The client should recover from one stale token by forcing a refresh and
+    # retrying the same request exactly once.
     tokens = iter(
         [
             {"access_token": "stale-token", "token_type": "Bearer", "expires_in": 3600},
@@ -93,6 +98,8 @@ async def test_client_retries_once_with_fresh_token_on_401() -> None:
 
 @pytest.mark.asyncio
 async def test_client_raises_safe_error_for_invalid_credentials() -> None:
+    # Credential errors should surface as safe operator guidance, not as raw
+    # token payloads or leaked secrets.
     async def auth_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "invalid_client"})
 
