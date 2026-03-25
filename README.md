@@ -1,6 +1,6 @@
 # ollama-server
 
-This repository contains a production-oriented Open WebUI deployment for an existing host-installed Ollama server, plus a FastAPI proxy that integrates Cisco AI Defense between Open WebUI and Ollama, and a FastMCP sidecar for Cisco XDR Conure incident access.
+This repository contains a production-oriented Open WebUI deployment for an existing host-installed Ollama server, plus a FastAPI proxy that integrates Cisco AI Defense between Open WebUI and Ollama, and FastMCP sidecars for Cisco XDR Conure incident access and Endace Vault packet-capture workflows.
 
 ## Contents
 
@@ -16,6 +16,8 @@ This repository contains a production-oriented Open WebUI deployment for an exis
   - Minimal custom Open WebUI image patch that marks internal helper-task requests so the proxy can skip inspecting them
 - `mcp-xdr/`
   - FastMCP server for Cisco XDR Conure incidents, summaries, detections, and context over Streamable HTTP
+- `mcp-endace-vault/`
+  - FastMCP server for Endace Vault packet-capture request lifecycle operations over Streamable HTTP
 
 ## Purpose
 

@@ -41,6 +41,26 @@ services:
       retries: 5
       start_period: 10s
 
+  mcp-endace-vault:
+    build:
+      context: ../mcp-endace-vault
+    container_name: mcp-endace-vault
+    restart: unless-stopped
+    environment:
+      ENDACE_VAULT_BASE_URL: ${ENDACE_VAULT_BASE_URL}
+      ENDACE_VAULT_USERNAME: ${ENDACE_VAULT_USERNAME}
+      ENDACE_VAULT_PASSWORD: ${ENDACE_VAULT_PASSWORD}
+      ENDACE_VAULT_TIMEOUT: ${ENDACE_VAULT_TIMEOUT}
+      ENDACE_VAULT_VERIFY_TLS: ${ENDACE_VAULT_VERIFY_TLS}
+      MCP_ENDACE_VAULT_PORT: ${MCP_ENDACE_VAULT_PORT}
+      MCP_ENDACE_VAULT_PATH: ${MCP_ENDACE_VAULT_PATH}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   open-webui:
     build:
       context: ./open-webui-custom
