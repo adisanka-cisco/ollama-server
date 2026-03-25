@@ -63,7 +63,12 @@ mcp = FastMCP(
     name="Cisco XDR Conure MCP",
     instructions=(
         "Read-only Cisco XDR incident and investigation tools. "
-        "Prefer these tools for incident lookup, summary, detections, and context."
+        "Use these tools whenever a prompt mentions Cisco XDR, an XDR incident, "
+        "or an incident identifier such as incident-<uuid>. "
+        "Prefer live tool results over model memory for incident details, "
+        "detections, context, storyboard chronology, entities, and observables. "
+        "Choose the most specific tool available for the user's request instead "
+        "of answering from prior knowledge."
     ),
 )
 
@@ -89,7 +94,14 @@ async def xdr_list_incidents(
     assignee: str | None = None,
     limit: int = 25,
 ) -> dict[str, Any]:
-    """List Cisco XDR incidents using Conure incident search and compact filtering."""
+    """List Cisco XDR incidents when the user needs to find the right incident first.
+
+    Use this tool when the prompt asks to search for incidents, find incidents by
+    status/priority/assignee, or does not yet include an exact incident ID.
+    Prefer this tool before the other XDR incident tools when the user is still
+    trying to locate the correct incident record.
+    Returns compact incident metadata plus the raw Conure search payload.
+    """
     _ensure_configured()
     try:
         raw_payload = await client.list_incidents(limit=max(limit * 4, limit))
@@ -137,7 +149,15 @@ async def xdr_list_incidents(
 
 @mcp.tool
 async def xdr_get_incident(incident_id: str) -> dict[str, Any]:
-    """Get the core Cisco XDR incident object with high-fidelity raw data."""
+    """Get the canonical Cisco XDR incident record for a known incident ID.
+
+    Use this tool when the prompt includes an XDR incident ID and asks for the
+    core incident object, metadata, owner, severity, status, timestamps, or
+    other canonical incident fields. Do not answer from memory if the user is
+    asking for live incident data. Prefer this tool over summary, detections,
+    context, or storyboard tools when the request is specifically about the
+    main incident record itself.
+    """
     _ensure_configured()
     try:
         raw_payload = await client.get_incident(incident_id)
@@ -162,7 +182,15 @@ async def xdr_get_incident(incident_id: str) -> dict[str, Any]:
 
 @mcp.tool
 async def xdr_get_incident_summary(incident_id: str) -> dict[str, Any]:
-    """Get the full incident summary and report with high-fidelity Cisco sections preserved."""
+    """Get the assembled incident summary and report for a known incident ID.
+
+    Use this tool when the user wants an overall incident summary, executive
+    narrative, report-style explanation, or a broad timeline-oriented overview.
+    Do not answer from memory if the prompt asks for the live summary of an XDR
+    incident. Prefer this tool over the detections tool when the user wants the
+    bigger picture, and over the storyboard tool when a report-style summary is
+    sufficient.
+    """
     _ensure_configured()
     try:
         incident_payload = await client.get_incident(incident_id)
@@ -205,7 +233,14 @@ async def xdr_get_incident_summary(incident_id: str) -> dict[str, Any]:
 
 @mcp.tool
 async def xdr_get_incident_detections(incident_id: str, limit: int = 100) -> dict[str, Any]:
-    """Get linked Cisco XDR detections/events for an incident with rich event detail preserved."""
+    """Get the linked detections, alerts, and event evidence for a known incident ID.
+
+    Use this tool when the prompt asks for detections, alerts, linked events,
+    evidence, or event-level details for an XDR incident. Do not answer from
+    memory if the user is asking for live detection data. Prefer this tool over
+    summary, context, or storyboard tools when the request is specifically about
+    detections or linked event evidence.
+    """
     _ensure_configured()
     try:
         raw_payload = await client.get_incident_events(incident_id, limit=limit)
@@ -236,7 +271,14 @@ async def xdr_get_incident_detections(incident_id: str, limit: int = 100) -> dic
 
 @mcp.tool
 async def xdr_get_incident_context(incident_id: str) -> dict[str, Any]:
-    """Get linked Cisco XDR incident context including entities and observables."""
+    """Get the linked Cisco XDR context for a known incident ID.
+
+    Use this tool when the user asks about related hosts, users, IPs, domains,
+    URLs, hashes, entities, or observables tied to an incident. Do not answer
+    from memory if the prompt is asking for live XDR context. Prefer this tool
+    over summary or detections when the request is specifically about assets,
+    identities, indicators, or surrounding incident context.
+    """
     _ensure_configured()
     try:
         entity_payload = await client.get_incident_entities(incident_id)
@@ -264,7 +306,15 @@ async def xdr_get_incident_context(incident_id: str) -> dict[str, Any]:
 
 @mcp.tool
 async def xdr_get_incident_storyboard(incident_id: str) -> dict[str, Any]:
-    """Get the Cisco XDR incident storyboard with high-fidelity chronology and context preserved."""
+    """Get the Cisco XDR incident storyboard for the richest assembled chronology.
+
+    Use this tool when the prompt asks what happened in an incident, asks for
+    chronology, attack progression, sequence of events, or the richest incident
+    narrative for a known incident ID. Do not answer from memory if the user is
+    asking for live storyboard context. Prefer this tool over summary or
+    detections when the request is about incident progression, storyline, or
+    chronological context.
+    """
     _ensure_configured()
     try:
         storyboard_payload = await client.get_incident_storyboard(incident_id)
