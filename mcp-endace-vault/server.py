@@ -108,6 +108,7 @@ async def endace_list_vault_requests(
             user_filter=user_filter,
             sort_by=sort_by,
             sort_direction=sort_direction,
+            tool_name="endace_list_vault_requests",
         )
     except EndaceVaultClientError as exc:
         raise _tool_error(exc) from exc
@@ -187,6 +188,7 @@ async def endace_create_pcap_request(
             request_type="packets",
             request_format="pcap",
             params=params,
+            tool_name="endace_create_pcap_request",
         )
     except EndaceVaultClientError as exc:
         raise _tool_error(exc) from exc
@@ -221,7 +223,7 @@ async def endace_get_vault_request(request_id: str) -> dict[str, Any]:
     """
     _ensure_configured()
     try:
-        raw_payload = await client.get_request(request_id)
+        raw_payload = await client.get_request(request_id, tool_name="endace_get_vault_request")
     except EndaceVaultClientError as exc:
         raise _tool_error(exc) from exc
 
@@ -256,7 +258,7 @@ async def endace_get_pcap_download(request_id: str) -> dict[str, Any]:
     """
     _ensure_configured()
     try:
-        raw_payload = await client.get_request(request_id)
+        raw_payload = await client.get_request(request_id, tool_name="endace_get_pcap_download")
     except EndaceVaultClientError as exc:
         raise _tool_error(exc) from exc
 
@@ -297,7 +299,7 @@ async def endace_delete_vault_request(request_id: str) -> dict[str, Any]:
     """
     _ensure_configured()
     try:
-        raw_payload = await client.delete_request(request_id)
+        raw_payload = await client.delete_request(request_id, tool_name="endace_delete_vault_request")
     except EndaceVaultClientError as exc:
         raise _tool_error(exc) from exc
 

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
+
+
+log = logging.getLogger("uvicorn.error")
 
 
 class EndaceVaultClientError(RuntimeError):
@@ -45,14 +49,35 @@ class EndaceVaultClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        tool_name: str = "unknown",
     ) -> Any:
         url = f"{self.base_url}{path}"
         try:
             response = await self._api_client.request(method, url, params=params)
         except httpx.TimeoutException as exc:
+            log.warning(
+                "endace_vault_call tool=%s endpoint=%s method=%s status=timeout",
+                tool_name,
+                url,
+                method,
+            )
             raise EndaceVaultClientError("Timed out while calling the Endace Vault API.") from exc
         except httpx.HTTPError as exc:
+            log.warning(
+                "endace_vault_call tool=%s endpoint=%s method=%s status=network_error",
+                tool_name,
+                url,
+                method,
+            )
             raise EndaceVaultClientError("Could not reach the Endace Vault API.") from exc
+
+        log.info(
+            "endace_vault_call tool=%s endpoint=%s method=%s status=%s",
+            tool_name,
+            url,
+            method,
+            response.status_code,
+        )
 
         if response.status_code == 401:
             raise EndaceVaultClientError(
@@ -96,6 +121,7 @@ class EndaceVaultClient:
         user_filter: str | None = None,
         sort_by: str | None = None,
         sort_direction: str | None = None,
+        tool_name: str = "endace_list_vault_requests",
     ) -> Any:
         params = {
             "page": max(page, 1),
@@ -105,7 +131,12 @@ class EndaceVaultClient:
             "sortBy": sort_by,
             "sortDirection": sort_direction,
         }
-        return await self._request("GET", "/", params={k: v for k, v in params.items() if v not in (None, "")})
+        return await self._request(
+            "GET",
+            "/",
+            params={k: v for k, v in params.items() if v not in (None, "")},
+            tool_name=tool_name,
+        )
 
     async def create_request(
         self,
@@ -113,15 +144,17 @@ class EndaceVaultClient:
         request_type: str,
         request_format: str,
         params: dict[str, Any],
+        tool_name: str = "endace_create_pcap_request",
     ) -> Any:
         return await self._request(
             "POST",
             f"/{request_type}/{request_format}",
             params={k: v for k, v in params.items() if v not in (None, "")},
+            tool_name=tool_name,
         )
 
-    async def get_request(self, request_id: str) -> Any:
-        return await self._request("GET", f"/{request_id}")
+    async def get_request(self, request_id: str, *, tool_name: str = "endace_get_vault_request") -> Any:
+        return await self._request("GET", f"/{request_id}", tool_name=tool_name)
 
-    async def delete_request(self, request_id: str) -> Any:
-        return await self._request("DELETE", f"/{request_id}")
+    async def delete_request(self, request_id: str, *, tool_name: str = "endace_delete_vault_request") -> Any:
+        return await self._request("DELETE", f"/{request_id}", tool_name=tool_name)
