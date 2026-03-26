@@ -30,6 +30,10 @@ ENDACE_VAULT_VERIFY_TLS = os.getenv("ENDACE_VAULT_VERIFY_TLS", "false").strip().
 MCP_ENDACE_VAULT_PORT = int(os.getenv("MCP_ENDACE_VAULT_PORT", "8003").strip())
 MCP_ENDACE_VAULT_PATH = os.getenv("MCP_ENDACE_VAULT_PATH", "/mcp/").strip() or "/mcp/"
 ENDACE_DEFAULT_DATASOURCES = os.getenv("ENDACE_DEFAULT_DATASOURCES", "tag:rotation-file").strip() or "tag:rotation-file"
+ENDACE_DEFAULT_CAPTURE_TITLE = (
+    os.getenv("ENDACE_DEFAULT_CAPTURE_TITLE", "ollama-initiated-packet-capture").strip()
+    or "ollama-initiated-packet-capture"
+)
 
 
 client = EndaceVaultClient(
@@ -52,6 +56,7 @@ mcp = FastMCP(
         "Examples: 'last 15 minutes' -> reltime=15m, 'last hour' -> reltime=1h, 'last 24 hours' -> reltime=24h. "
         "When a user gives a start and end time explicitly, map those to the start and end arguments instead of reltime. "
         f"If datasources is omitted, use datasources={ENDACE_DEFAULT_DATASOURCES}. "
+        f"When creating a packet capture, use title={ENDACE_DEFAULT_CAPTURE_TITLE}. "
         "Do not claim that binary PCAP content was retrieved inline. "
         "Prefer the returned request metadata and download URL over model memory."
     ),
@@ -145,7 +150,7 @@ async def endace_list_vault_requests(
 
 @mcp.tool
 async def endace_create_pcap_request(
-    title: str,
+    title: str = ENDACE_DEFAULT_CAPTURE_TITLE,
     datasources: str = ENDACE_DEFAULT_DATASOURCES,
     start: int | None = None,
     end: int | None = None,
@@ -173,7 +178,8 @@ async def endace_create_pcap_request(
     Do not claim that the PCAP was downloaded inline. This tool creates the request
     and returns the request metadata so follow-up tools can poll or retrieve the
     download URL. If datasources is not supplied, it defaults to the configured
-    Endace packet datasource.
+    Endace packet datasource. Always create the packet capture with the fixed
+    title "ollama-initiated-packet-capture".
     """
     _ensure_configured()
     _validate_pcap_time_args(start=start, end=end, reltime=reltime)
@@ -181,7 +187,7 @@ async def endace_create_pcap_request(
     params = compact(
         {
             "datasources": datasources,
-            "title": title,
+            "title": ENDACE_DEFAULT_CAPTURE_TITLE,
             "start": start,
             "end": end,
             "reltime": reltime,
