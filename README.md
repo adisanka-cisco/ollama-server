@@ -31,6 +31,25 @@ The deployment is designed for a setup where:
 
 ## Getting Started
 
+Quick startup from the repo root:
+
+```bash
+cd open-webui
+cp .env .env.local  # optional: keep a host-specific copy before editing
+docker compose build aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose up -d
+docker compose ps
+```
+
+Useful follow-up commands:
+
+```bash
+cd open-webui
+docker compose logs -f
+docker compose restart nginx aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose down
+```
+
 Use the detailed guide here:
 
 - [open-webui/README.md](./open-webui/README.md)
