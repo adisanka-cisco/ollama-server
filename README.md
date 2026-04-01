@@ -2,6 +2,10 @@
 
 This repository contains a production-oriented Open WebUI deployment for an existing host-installed Ollama server, plus a FastAPI proxy that integrates Cisco AI Defense between Open WebUI and Ollama, and FastMCP sidecars for Cisco XDR Conure incident access and Endace Vault packet-capture workflows.
 
+## Architecture
+
+![Ollama Server Architecture](./docs/images/ollama-architecture-image.png)
+
 ## Contents
 
 - `open-webui/docker-compose.yml`
