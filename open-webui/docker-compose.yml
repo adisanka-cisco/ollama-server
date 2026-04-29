@@ -9,6 +9,15 @@ services:
       AIDEFENSE_BASE_URL: ${AIDEFENSE_BASE_URL}
       AIDEFENSE_API_KEY: ${AIDEFENSE_API_KEY}
       AIDEFENSE_ENFORCEMENT_MODE: ${AIDEFENSE_ENFORCEMENT_MODE}
+      AIDEFENSE_ENABLED_RULES: ${AIDEFENSE_ENABLED_RULES}
+      AIDEFENSE_INTEGRATION_PROFILE_ID: ${AIDEFENSE_INTEGRATION_PROFILE_ID}
+      AIDEFENSE_INTEGRATION_PROFILE_VERSION: ${AIDEFENSE_INTEGRATION_PROFILE_VERSION}
+      AIDEFENSE_INTEGRATION_TENANT_ID: ${AIDEFENSE_INTEGRATION_TENANT_ID}
+      AIDEFENSE_INTEGRATION_TYPE: ${AIDEFENSE_INTEGRATION_TYPE}
+      AIDEFENSE_CONNECT_TIMEOUT_SECONDS: ${AIDEFENSE_CONNECT_TIMEOUT_SECONDS}
+      AIDEFENSE_READ_TIMEOUT_SECONDS: ${AIDEFENSE_READ_TIMEOUT_SECONDS}
+      AIDEFENSE_WRITE_TIMEOUT_SECONDS: ${AIDEFENSE_WRITE_TIMEOUT_SECONDS}
+      AIDEFENSE_POOL_TIMEOUT_SECONDS: ${AIDEFENSE_POOL_TIMEOUT_SECONDS}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -61,6 +70,54 @@ services:
       retries: 5
       start_period: 10s
 
+  mcp-xdr-community:
+    build:
+      context: ../mcp-xdr-community
+      args:
+        XDR_MCP_COMMUNITY_COMMIT: ${XDR_MCP_COMMUNITY_COMMIT}
+    container_name: mcp-xdr-community
+    restart: unless-stopped
+    environment:
+      MCP_XDR_COMMUNITY_PORT: ${MCP_XDR_COMMUNITY_PORT}
+      MCP_XDR_COMMUNITY_PATH: ${MCP_XDR_COMMUNITY_PATH}
+      XDR_CLIENT_ID: ${XDR_COMMUNITY_CLIENT_ID}
+      XDR_CLIENT_PASSWORD: ${XDR_COMMUNITY_CLIENT_PASSWORD}
+      XDR_REGION: ${XDR_COMMUNITY_REGION}
+      XDR_OAUTH_TOKEN_URL: ${XDR_COMMUNITY_OAUTH_TOKEN_URL}
+      XDR_AUTOMATE_BASE_URL: ${XDR_COMMUNITY_AUTOMATE_BASE_URL}
+      XDR_PLATFORM_BASE_URL: ${XDR_COMMUNITY_PLATFORM_BASE_URL}
+      XDR_PRIVATE_INTEL_BASE_URL: ${XDR_COMMUNITY_PRIVATE_INTEL_BASE_URL}
+      XDR_CONURE_BASE_URL: ${XDR_COMMUNITY_CONURE_BASE_URL}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os, urllib.request; urllib.request.urlopen(f\"http://127.0.0.1:{os.environ['MCP_XDR_COMMUNITY_PORT']}/openapi.json\", timeout=10)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  mcp-cortex:
+    build:
+      context: ../mcp-cortex
+    container_name: mcp-cortex
+    restart: unless-stopped
+    environment:
+      CORTEX_MCP_PAPI_URL: ${CORTEX_MCP_PAPI_URL}
+      CORTEX_MCP_PAPI_AUTH_HEADER: ${CORTEX_MCP_PAPI_AUTH_HEADER}
+      CORTEX_MCP_PAPI_AUTH_ID: ${CORTEX_MCP_PAPI_AUTH_ID}
+      MCP_TRANSPORT: ${CORTEX_MCP_TRANSPORT}
+      MCP_HOST: ${CORTEX_MCP_HOST}
+      MCP_PORT: ${CORTEX_MCP_PORT}
+      MCP_PATH: ${CORTEX_MCP_PATH}
+      MCP_WRITE_TOOLS_ENABLED: ${MCP_WRITE_TOOLS_ENABLED}
+      MCP_ISOLATE_ENDPOINT_TOOL_ENABLED: ${MCP_ISOLATE_ENDPOINT_TOOL_ENABLED}
+      MCP_ELICITATION_ENABLED: ${MCP_ELICITATION_ENABLED}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ping/', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   open-webui:
     build:
       context: ./open-webui-custom
@@ -79,6 +136,9 @@ services:
       OLLAMA_BASE_URL: http://aidefense-proxy:${AIDEFENSE_PROXY_PORT}
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
       WEBUI_URL: ${WEBUI_URL}
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE}
+      TASK_MODEL: ${TASK_MODEL}
+      TOOL_SERVER_CONNECTIONS: ${TOOL_SERVER_CONNECTIONS}
       SCIM_ENABLED: ${SCIM_ENABLED}
       SCIM_TOKEN: ${SCIM_TOKEN}
       SCIM_AUTH_PROVIDER: ${SCIM_AUTH_PROVIDER}
