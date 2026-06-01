@@ -6,8 +6,8 @@ This deployment runs on one Ubuntu host:
 - `nginx` runs in Docker as the HTTPS reverse proxy
 - `aidefense-proxy` runs in Docker as a FastAPI sidecar
 - `mcp-xdr` runs in Docker as an internal FastMCP sidecar for Cisco XDR incident access
-- `mcp-endace-vault` runs in Docker as an internal FastMCP sidecar for Endace Vault packet-capture workflows
 - Open WebUI runs in Docker and talks to the proxy instead of talking to Ollama directly
+- packet-capture is performed by an external packet-capture MCP server (not part of this stack) registered directly in the Open WebUI admin UI
 
 Traffic path:
 
@@ -20,7 +20,7 @@ Optional internal MCP path:
 
 ```text
 Open WebUI -> mcp-xdr -> Cisco XDR Conure API
-Open WebUI -> mcp-endace-vault -> Endace Vault API
+Open WebUI -> external packet-capture MCP (http://172.16.0.70:8080/mcp)
 ```
 
 ## Folder structure
@@ -31,14 +31,6 @@ open-webui/
 ├── docker-compose.yml
 ├── README.md
 ├── ../mcp-xdr/
-│   ├── Dockerfile
-│   ├── client.py
-│   ├── formatters.py
-│   ├── models.py
-│   ├── requirements.txt
-│   ├── server.py
-│   └── tests/
-├── ../mcp-endace-vault/
 │   ├── Dockerfile
 │   ├── client.py
 │   ├── formatters.py
@@ -77,11 +69,12 @@ open-webui/
   - internal-only on Docker port `8002`
   - exposes Cisco XDR Conure incident tools over FastMCP Streamable HTTP
   - uses OAuth2 client credentials and in-memory token caching only
-- `mcp-endace-vault`
-  - built locally from `../mcp-endace-vault`
-  - internal-only on Docker port `8003`
-  - exposes Endace Vault packet-capture lifecycle tools over FastMCP Streamable HTTP
-  - uses HTTP Basic auth against the Endace Vault API
+
+The packet-capture MCP server is **not** part of this Compose stack. It is an
+external MCP server (Streamable HTTP at `http://172.16.0.70:8080/mcp`, no auth)
+registered directly in the Open WebUI admin UI under **Manage Tool Servers**.
+See `../docs/incident-driven-pcap.md` for the registration steps and the
+incident-driven capture playbook.
 
 ## Environment variables
 
@@ -107,13 +100,6 @@ XDR_CLIENT_SECRET=
 XDR_HTTP_TIMEOUT=30
 XDR_VERIFY_TLS=true
 XDR_TOKEN_REFRESH_SKEW_SECONDS=60
-MCP_ENDACE_VAULT_PORT=8003
-MCP_ENDACE_VAULT_PATH=/mcp/
-ENDACE_VAULT_BASE_URL=https://172.16.0.71/api/v5/vault
-ENDACE_VAULT_USERNAME=
-ENDACE_VAULT_PASSWORD=
-ENDACE_VAULT_TIMEOUT=30
-ENDACE_VAULT_VERIFY_TLS=false
 AIDEFENSE_BASE_URL=https://us.api.inspect.aidefense.security.cisco.com
 AIDEFENSE_API_KEY=replace-on-host-only
 AIDEFENSE_ENFORCEMENT_MODE=monitor
@@ -136,12 +122,9 @@ Notes:
 - `OLLAMA_BASE_URL` is used by the proxy to reach host Ollama.
 - Open WebUI itself is wired in Compose to `http://aidefense-proxy:8001`.
 - `mcp-xdr` is exposed only on the internal Docker network at `http://mcp-xdr:8002/mcp/`.
-- `mcp-endace-vault` is exposed only on the internal Docker network at `http://mcp-endace-vault:8003/mcp/`.
 - `XDR_CLIENT_ID` and `XDR_CLIENT_SECRET` are read only by `mcp-xdr`.
 - The XDR sidecar uses OAuth2 client credentials and keeps access tokens only in memory.
-- `ENDACE_VAULT_USERNAME` and `ENDACE_VAULT_PASSWORD` are read only by `mcp-endace-vault`.
-- Endace Vault uses HTTP Basic auth rather than OAuth.
-- `ENDACE_VAULT_VERIFY_TLS=false` is intended for the current self-signed Vault environment.
+- The external packet-capture MCP (`http://172.16.0.70:8080/mcp`) is registered in the Open WebUI admin UI, not configured via `.env`.
 - Keep the real `AIDEFENSE_API_KEY` only on the host copy of `.env`.
 - The Cisco API key is injected into `aidefense-proxy` only, not into `open-webui`.
 - `AIDEFENSE_ENFORCEMENT_MODE=monitor` means the proxy inspects but never blocks.
@@ -173,7 +156,7 @@ openssl req -x509 -nodes -newkey rsa:2048 \
   -days 365 \
   -subj "/CN=<PUBLIC_HOST>" \
   -addext "subjectAltName=DNS:<PUBLIC_HOST>,IP:<PUBLIC_IP_IF_USING_IP>"
-docker compose build aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose build aidefense-proxy mcp-xdr open-webui
 docker compose up -d
 docker compose ps
 ```
@@ -184,9 +167,8 @@ Useful commands:
 docker compose logs -f nginx
 docker compose logs -f aidefense-proxy
 docker compose logs -f mcp-xdr
-docker compose logs -f mcp-endace-vault
 docker compose logs -f open-webui
-docker compose restart nginx aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose restart nginx aidefense-proxy mcp-xdr open-webui
 docker compose down
 docker compose up -d
 ```
@@ -294,31 +276,29 @@ The initial tool set is:
 - `xdr_get_incident_context`
 - `xdr_get_incident_storyboard`
 
-### 8. Endace Vault MCP sidecar
+### 8. External packet-capture MCP
+
+The packet-capture MCP is **not** a Compose service. Confirm the host can reach
+the external server and register it in the Open WebUI admin UI.
 
 ```bash
-docker compose exec mcp-endace-vault python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8003/healthz').read().decode())"
-docker compose logs --tail=200 mcp-endace-vault
+curl -i http://172.16.0.70:8080/mcp
 ```
 
 Expected:
 
-- the MCP sidecar responds with `{"status":"ok"}`
-- no Endace credentials appear in logs
+- the request reaches the server (an empty body to a plain GET is normal for an
+  MCP Streamable HTTP endpoint that expects a session POST)
 
-To register it in Open WebUI, add an MCP server using the internal URL:
+To register it in Open WebUI, go to **Admin Settings -> Manage Tool Servers**
+and add an MCP server using the external URL:
 
 ```text
-http://mcp-endace-vault:8003/mcp/
+http://172.16.0.70:8080/mcp
 ```
 
-The initial tool set is:
-
-- `endace_list_vault_requests`
-- `endace_create_pcap_request`
-- `endace_get_vault_request`
-- `endace_get_pcap_download`
-- `endace_delete_vault_request`
+See `../docs/incident-driven-pcap.md` for the full registration steps, the
+system-prompt playbook, and the end-to-end incident-driven capture workflow.
 
 ## Troubleshooting
 
@@ -379,21 +359,20 @@ Common causes:
 - the incident ID does not exist and Cisco returns `404`
 - upstream rate limiting or a temporary Conure outage
 
-### Endace Vault MCP tools fail
+### Packet-capture MCP tools fail
 
-Check:
+Check from the Open WebUI host:
 
 ```bash
-docker compose logs --tail=200 mcp-endace-vault
+curl -i http://172.16.0.70:8080/mcp
 ```
 
 Common causes:
 
-- `ENDACE_VAULT_USERNAME` or `ENDACE_VAULT_PASSWORD` is missing or invalid
-- `ENDACE_VAULT_BASE_URL` is wrong
-- `ENDACE_VAULT_VERIFY_TLS` needs to be `false` for the current self-signed environment
-- the Vault request ID does not exist and Endace returns `404`
-- Endace Vault is busy and returns `503`
+- the host cannot route to `172.16.0.70:8080` (network/firewall between segments)
+- the external packet-capture MCP server is down or restarting
+- the MCP server was not added under **Manage Tool Servers**, or the URL/path is wrong
+- the model was not given the capture playbook prompt, so it never calls the tool
 
 ### SCIM provisioning fails
 

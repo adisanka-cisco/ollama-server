@@ -1,6 +1,6 @@
 # ollama-server
 
-This repository contains a production-oriented Open WebUI deployment for an existing host-installed Ollama server, plus a FastAPI proxy that integrates Cisco AI Defense between Open WebUI and Ollama, and FastMCP sidecars for Cisco XDR Conure incident access and Endace Vault packet-capture workflows.
+This repository contains a production-oriented Open WebUI deployment for an existing host-installed Ollama server, plus a FastAPI proxy that integrates Cisco AI Defense between Open WebUI and Ollama, and a FastMCP sidecar for Cisco XDR Conure incident access. Packet-capture is driven through an external packet-capture MCP server registered directly in the Open WebUI admin UI (see the incident-driven packet-capture runbook in `docs/`).
 
 ## Architecture
 
@@ -20,8 +20,8 @@ This repository contains a production-oriented Open WebUI deployment for an exis
   - Minimal custom Open WebUI image patch that marks internal helper-task requests so the proxy can skip inspecting them
 - `mcp-xdr/`
   - FastMCP server for Cisco XDR Conure incidents, summaries, detections, and context over Streamable HTTP
-- `mcp-endace-vault/`
-  - FastMCP server for Endace Vault packet-capture request lifecycle operations over Streamable HTTP
+- `docs/incident-driven-pcap.md`
+  - Runbook and system-prompt playbook for the incident-driven packet-capture workflow (XDR incident -> assets -> external packet-capture MCP)
 
 ## Purpose
 
@@ -40,7 +40,7 @@ Quick startup from the repo root:
 ```bash
 cd open-webui
 cp .env .env.local  # optional: keep a host-specific copy before editing
-docker compose build aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose build aidefense-proxy mcp-xdr open-webui
 docker compose up -d
 docker compose ps
 ```
@@ -50,7 +50,7 @@ Useful follow-up commands:
 ```bash
 cd open-webui
 docker compose logs -f
-docker compose restart nginx aidefense-proxy mcp-xdr mcp-endace-vault open-webui
+docker compose restart nginx aidefense-proxy mcp-xdr open-webui
 docker compose down
 ```
 
