@@ -77,7 +77,7 @@ def _parse_jsonrpc(raw: str):
 
 
 class MCPClient:
-    def __init__(self, name: str, url: str, insecure: bool = False, timeout: float = 30.0):
+    def __init__(self, name: str, url: str, insecure: bool = False, timeout: float = 600.0):
         self.name = name
         self.url = url
         self.timeout = timeout
@@ -147,7 +147,7 @@ class MCPClient:
 # --------------------------------------------------------------------------- #
 # Ollama chat with tool calling                                               #
 # --------------------------------------------------------------------------- #
-def ollama_chat(base_url: str, model: str, messages: list[dict], tools: list[dict], timeout: float = 300.0):
+def ollama_chat(base_url: str, model: str, messages: list[dict], tools: list[dict], timeout: float = 3600.0):
     url = base_url.rstrip("/") + "/api/chat"
     body = json.dumps(
         {"model": model, "messages": messages, "tools": tools, "stream": False}
@@ -295,8 +295,9 @@ def run_turn(base_url, model, messages, ollama_tools, tool_to_client, max_tool_r
                     result = client.call_tool(name, args)
                 except Exception as exc:  # noqa: BLE001 - surface to the model
                     result = f"ERROR calling {name}: {exc}"
-            print(f"  <- result ({len(str(result))} chars)", file=sys.stderr)
-            messages.append({"role": "tool", "content": str(result)})
+            result_str = str(result)
+            print(f"  <- result ({len(result_str)} chars)", file=sys.stderr)
+            messages.append({"role": "tool", "content": result_str})
     return "(stopped: reached max tool-call rounds)"
 
 
