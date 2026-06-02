@@ -191,11 +191,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "the start, end, and a maximum duration (time limit). Do not invent the limit.\n"
     "5. Call the Packet_Decode tool to start the capture, using EXACTLY:\n"
     "   - ip_conv: the two IPs as one string 'SRC & DST', e.g. '10.1.1.5 & 10.1.1.9'\n"
-    "   - start and end MUST be RFC3339 UTC time strings, e.g. "
-    "'2026-05-30T00:02:01Z'. NEVER pass epoch numbers as quoted strings like "
-    "'1780355625000' - the server reads quoted values as RFC3339 times and will "
-    "fail. If you only have an epoch value, convert it to an RFC3339 UTC string "
-    "first.\n"
+    "   - start and end as the capture window. Prefer integer epoch milliseconds "
+    "(e.g. 1780355625000). RFC3339 UTC strings are also accepted.\n"
     "   - use either start+end OR reltime (e.g. '2m'), never both.\n"
     "   - do NOT use sip/dip/ip_sip or any other parameter names.\n"
     "Never invent tool results or pass placeholder values; if a tool errors, show "
@@ -228,21 +225,46 @@ def build_registry(specs: list[str], insecure: bool):
     return clients, tool_to_client, all_tools
 
 
-def coerce_epoch_args(args: dict) -> dict:
-    """Convert quoted all-digit epoch values back to integers.
+def _to_epoch_ms(val):
+    """Best-effort convert a time value to integer epoch milliseconds.
 
-    Small local models often emit time arguments as quoted strings
-    (e.g. "1780355625000"). Some MCP tools read quoted values as RFC3339 time
-    strings and reject them, while accepting the same value as an integer epoch.
-    For the known time fields, if the value is a string of only digits and looks
-    like an epoch (>= 10 digits), send it as an int instead.
+    The packet-capture server has been verified to accept integer epoch-ms for
+    start/end. Models may emit either a quoted epoch ("1780355625000") or an
+    RFC3339 string ("2026-06-01T23:13:45Z"); normalize both to int epoch-ms so
+    the tool call matches the proven-good format.
     """
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val)
+    if isinstance(val, str):
+        s = val.strip()
+        if s.isdigit():
+            n = int(s)
+            # seconds -> ms if it looks like a 10-digit epoch
+            return n * 1000 if len(s) <= 11 else n
+        # try RFC3339 / ISO8601
+        try:
+            from datetime import datetime, timezone
+            iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            return val
+    return val
+
+
+def coerce_epoch_args(args: dict) -> dict:
+    """Normalize known time fields to integer epoch milliseconds."""
     if not isinstance(args, dict):
         return args
     for key in ("start", "end", "incident_time"):
-        val = args.get(key)
-        if isinstance(val, str) and val.isdigit() and len(val) >= 10:
-            args[key] = int(val)
+        if key in args and args[key] is not None:
+            args[key] = _to_epoch_ms(args[key])
     return args
 
 
