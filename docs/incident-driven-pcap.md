@@ -114,6 +114,66 @@ Rules:
 - Keep responses concise and oriented to a junior analyst.
 ```
 
+## Testing from the CLI (no UI required)
+
+When the Open WebUI front end is not reachable (for example you only have shell
+access to the host), two dependency-free scripts under `scripts/` let you
+discover MCP tools and drive the full Ollama + MCP flow directly. Both use only
+the Python standard library, so they run on a locked-down host.
+
+### 1. Discover the MCP tools
+
+`scripts/mcp_probe.py` performs the MCP handshake (initialize ->
+notifications/initialized -> tools/list) and prints the server's real tool names
+and parameter schemas. The capture MCP is HTTPS and may use a self-signed
+certificate, so pass `--insecure`.
+
+```bash
+cd ~/ollama-server
+# list the packet-capture MCP's tools
+python3 scripts/mcp_probe.py --url https://172.16.0.70:8080/mcp --insecure list
+
+# call one tool directly (args are a JSON object; field names come from the spec)
+python3 scripts/mcp_probe.py --url https://172.16.0.70:8080/mcp --insecure \
+  call <tool_name> --args '{"sip":"10.1.1.5","dip":"10.1.1.9","reltime":"15m"}'
+```
+
+### 2. Run the Ollama + MCP agent loop
+
+`scripts/soc_agent_cli.py` replicates what Open WebUI does internally: it
+discovers tools from one or more MCP servers, exposes them to a local Ollama
+model via Ollama's tool-calling API, and executes any tool the model calls.
+
+```bash
+# just discover tools across both servers and exit (no model needed)
+python3 scripts/soc_agent_cli.py --list-tools \
+  --mcp endace=https://172.16.0.70:8080/mcp \
+  --mcp xdr=http://mcp-xdr:8002/mcp/ --insecure
+
+# one-shot prompt against the capture MCP
+python3 scripts/soc_agent_cli.py --model llama3.1:8b \
+  --mcp endace=https://172.16.0.70:8080/mcp --insecure \
+  --prompt "List your packet-capture tools, then capture traffic between 10.1.1.5 and 10.1.1.9 for the last 15 minutes."
+
+# interactive end-to-end flow (XDR incident -> assets -> capture)
+python3 scripts/soc_agent_cli.py --model llama3.1:8b \
+  --mcp xdr=http://mcp-xdr:8002/mcp/ \
+  --mcp endace=https://172.16.0.70:8080/mcp --insecure
+# then type: For XDR incident incident-<id>, pull the assets and capture between two of them.
+```
+
+Tool-call activity is logged to stderr (`-> tool call: ...` / `<- result ...`)
+so you can confirm the model actually invoked the MCP servers rather than
+answering from memory.
+
+Notes:
+- `mcp-xdr:8002` is a Docker-internal hostname. It resolves from inside the
+  `open-webui` container but not necessarily from the host shell; if the host
+  cannot reach it, run the script from inside the container or use the address
+  the sidecar is published on.
+- `llama3.1:8b` tool-calling reliability is limited. `--list-tools` validates
+  connectivity independently of the model, which is the most reliable check.
+
 ## Notes for deployment on the other network
 
 - This document and the repo changes (removing the in-repo Endace sidecar) come

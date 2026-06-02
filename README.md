@@ -66,3 +66,15 @@ That document includes:
 - Ollama connectivity checks
 - Open WebUI validation
 - Cisco AI Defense proxy behavior and troubleshooting
+
+## CLI testing without the UI
+
+When the Open WebUI front end is not reachable, two dependency-free scripts under
+`scripts/` let you discover MCP tools and drive the Ollama + MCP flow from a
+shell:
+
+- `scripts/mcp_probe.py` — list/call tools on an MCP Streamable HTTP server
+- `scripts/soc_agent_cli.py` — Ollama + MCP agent loop (XDR incident -> assets -> Endace capture)
+
+See [docs/incident-driven-pcap.md](./docs/incident-driven-pcap.md) ("Testing from
+the CLI") for full commands.
