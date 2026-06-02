@@ -22,11 +22,7 @@ services:
       start_period: 10s
 
   open-webui:
-    build:
-      context: ./open-webui-custom
-      args:
-        OPEN_WEBUI_BASE_IMAGE: ${OPEN_WEBUI_IMAGE}
-    image: open-webui-custom:local
+    image: ${OPEN_WEBUI_IMAGE}
     container_name: ${OPEN_WEBUI_CONTAINER_NAME}
     restart: unless-stopped
     extra_hosts:
