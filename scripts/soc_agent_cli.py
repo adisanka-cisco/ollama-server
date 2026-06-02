@@ -191,8 +191,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "the start, end, and a maximum duration (time limit). Do not invent the limit.\n"
     "5. Call the Packet_Decode tool to start the capture, using EXACTLY:\n"
     "   - ip_conv: the two IPs as one string 'SRC & DST', e.g. '10.1.1.5 & 10.1.1.9'\n"
-    "   - either start+end as RFC3339 UTC strings (e.g. '2026-05-30T00:02:01Z'),\n"
-    "     OR reltime (e.g. '2m'), never both.\n"
+    "   - start and end MUST be RFC3339 UTC time strings, e.g. "
+    "'2026-05-30T00:02:01Z'. NEVER pass epoch numbers as quoted strings like "
+    "'1780355625000' - the server reads quoted values as RFC3339 times and will "
+    "fail. If you only have an epoch value, convert it to an RFC3339 UTC string "
+    "first.\n"
+    "   - use either start+end OR reltime (e.g. '2m'), never both.\n"
     "   - do NOT use sip/dip/ip_sip or any other parameter names.\n"
     "Never invent tool results or pass placeholder values; if a tool errors, show "
     "the error and stop."
@@ -224,6 +228,24 @@ def build_registry(specs: list[str], insecure: bool):
     return clients, tool_to_client, all_tools
 
 
+def coerce_epoch_args(args: dict) -> dict:
+    """Convert quoted all-digit epoch values back to integers.
+
+    Small local models often emit time arguments as quoted strings
+    (e.g. "1780355625000"). Some MCP tools read quoted values as RFC3339 time
+    strings and reject them, while accepting the same value as an integer epoch.
+    For the known time fields, if the value is a string of only digits and looks
+    like an epoch (>= 10 digits), send it as an int instead.
+    """
+    if not isinstance(args, dict):
+        return args
+    for key in ("start", "end", "incident_time"):
+        val = args.get(key)
+        if isinstance(val, str) and val.isdigit() and len(val) >= 10:
+            args[key] = int(val)
+    return args
+
+
 def run_turn(base_url, model, messages, ollama_tools, tool_to_client, max_tool_rounds=8):
     for _ in range(max_tool_rounds):
         data = ollama_chat(base_url, model, messages, ollama_tools)
@@ -241,6 +263,7 @@ def run_turn(base_url, model, messages, ollama_tools, tool_to_client, max_tool_r
                     args = json.loads(args)
                 except json.JSONDecodeError:
                     args = {}
+            args = coerce_epoch_args(args)
             client = tool_to_client.get(name)
             print(f"  -> tool call: {name}({json.dumps(args)})", file=sys.stderr)
             if client is None:
