@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -74,17 +75,21 @@ def parse_payload(raw: str) -> dict | list | None:
 
 
 class MCPClient:
-    def __init__(self, url: str, insecure: bool = False, timeout: float = 20.0) -> None:
+    def __init__(self, url: str, insecure: bool = False, timeout: float = 20.0,
+                 token: str | None = None) -> None:
         self.url = url
         self.timeout = timeout
         self.context = build_context(insecure)
         self.session_id: str | None = None
+        self.token = token
 
     def _post(self, method: str, params: dict, request_id: int | str) -> tuple[str, str | None]:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
         body = json.dumps(
@@ -158,6 +163,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--url", default=DEFAULT_URL, help=f"MCP endpoint URL (default: {DEFAULT_URL})")
     parser.add_argument("--insecure", action="store_true", help="skip TLS certificate verification")
     parser.add_argument("--timeout", type=float, default=20.0, help="request timeout in seconds")
+    parser.add_argument("--token", default=None,
+                        help="bearer token; if omitted, read from env var MCP_TOKEN")
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="list available tools")
@@ -166,7 +173,8 @@ def main(argv: list[str]) -> int:
     call_parser.add_argument("--args", default="{}", help="tool arguments as a JSON object string")
 
     ns = parser.parse_args(argv)
-    client = MCPClient(ns.url, insecure=ns.insecure, timeout=ns.timeout)
+    token = ns.token or os.environ.get("MCP_TOKEN") or None
+    client = MCPClient(ns.url, insecure=ns.insecure, timeout=ns.timeout, token=token)
 
     if ns.command == "list":
         return cmd_list(client)

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -77,18 +78,22 @@ def _parse_jsonrpc(raw: str):
 
 
 class MCPClient:
-    def __init__(self, name: str, url: str, insecure: bool = False, timeout: float = 600.0):
+    def __init__(self, name: str, url: str, insecure: bool = False, timeout: float = 600.0,
+                 token: str | None = None):
         self.name = name
         self.url = url
         self.timeout = timeout
         self.context = _ssl_context(insecure)
         self.session_id: str | None = None
+        self.token = token
 
     def _post(self, method: str, params: dict, request_id):
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
         body = json.dumps(
@@ -209,7 +214,15 @@ def build_registry(specs: list[str], insecure: bool):
         if "=" not in spec:
             raise SystemExit(f"--mcp must be name=url, got: {spec}")
         name, url = spec.split("=", 1)
-        client = MCPClient(name.strip(), url.strip(), insecure=insecure)
+        name = name.strip()
+        # Bearer token is read from an env var named MCP_TOKEN_<NAME-UPPERCASED>
+        # so secrets never appear on the command line or in git. Example:
+        # for --mcp splunk=... set MCP_TOKEN_SPLUNK=<token>.
+        token_env = "MCP_TOKEN_" + name.upper().replace("-", "_")
+        token = os.environ.get(token_env) or None
+        client = MCPClient(name, url.strip(), insecure=insecure, token=token)
+        if token:
+            print(f"[{name}] using bearer token from ${token_env}", file=sys.stderr)
         client.initialize()
         tools = client.list_tools()
         clients[name] = client
